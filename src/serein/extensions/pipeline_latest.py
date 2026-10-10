@@ -40,7 +40,7 @@ EVENT_DISCARDED_OVERLAP_MAX = 0.50         # discarded_details 与正文的重�
 EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = 100  # 原文太短时不启用重合检测（样本不足）
 EVENT_BODY_RATIO_MIN_SOURCE_CHARS = 300    # 原文不足此长度时不做比例检测，只兜底「不得长于原文」
 EVENT_BODY_OVERLAP_NGRAM = 6
-EVENT_BODY_SOURCE_RATIO_MAX = 0.50         # 正文净字数占 owned 原文净字数的上限（仅原文达 RATIO_MIN 时生效）
+EVENT_BODY_SOURCE_RATIO_MAX = 0.70         # 正文净字数占 owned 原文净字数的上限（仅原文达 RATIO_MIN 时生效）
 
 TRACK_EVENT_POLICIES = {'default', 'rolling_engineering'}
 EVENT_CURATOR_ACTIONS = {'create', 'extend', 'rewrite', 'merge'}

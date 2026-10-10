@@ -41,7 +41,7 @@ def _length_budget_prompt(prompt: str, result: dict[str, Any],
                           owned_payload: list[dict[str, Any]]) -> str | None:
     """把「超过比例上限」翻译成一个具体字数，直接压给模型。
 
-    比例类违规只说「超过 50%」，模型算不出该写多少字，实测连试 3 次仍会停在
+    比例类违规只说「超过 70%」，模型算不出该写多少字，实测连试 3 次仍会停在
     60%~90%。这里按 owned 原文净字数直接算出上限：原文达 RATIO_MIN（300 字）
     时取一半，不足时只要求不长于原文（与生产校验口径一致）。
     """
