@@ -33,3 +33,8 @@ HTTP：`POST /v1/pipeline/rebuild`，请求包含 `batch_id` 和 `confirm="REBUI
 needs_repair 表示无法证明旧归线可以安全恢复，需要先校验或明确重建，不自动跳过或猜补。paused_failure 表示文字 job 累计失败三次：点“重试此批次”保留冻结材料和成功结果，只重新开放未完成步骤的预算。其他聊天可继续，同一聊天后续等待恢复；绕行不适用于 needs_repair。
 
 HTTP 使用 `POST /v1/pipeline/retry-batch` 和 `{batch_id}`，随后调用继续接口。与重建共用 pipeline 执行锁，已有 queued/running 任务时返回 busy。
+
+
+## 契约变更后的成片清理
+
+修改运行契约文件会改变 `runtime_revision`，此前冻结的批次与归线路由生产者随即失效，可能成片积压 `needs_repair`。除逐条走上述界面出口外，可用归线缓存维护脚本一次清场；步骤、顺序与各自保住的边界见 [流水线缓存维护](pipeline-cache-maintenance.md)。
