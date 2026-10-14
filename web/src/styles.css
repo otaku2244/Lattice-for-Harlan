@@ -886,7 +886,7 @@ label:has(input:focus-visible) {
 .sidebar__mark { justify-self: center; }
 .sidebar__name { padding-left: 9px; white-space: nowrap; opacity: 0; transform: translateX(-6px); transition: opacity var(--sidebar-duration) var(--sidebar-ease), transform var(--sidebar-duration) var(--sidebar-ease); }
 .sidebar:hover .sidebar__name, .sidebar:focus-within .sidebar__name { opacity: 1; transform: translateX(0); }
-.sidebar__nav { display: grid; gap: 4px; }
+.sidebar__nav { display: grid; gap: 4px; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
 .nav-item {
   width: 168px;
   min-height: 38px;
@@ -907,7 +907,7 @@ label:has(input:focus-visible) {
 .sidebar:hover .nav-item span, .sidebar:focus-within .nav-item span { opacity: 1; transform: translateX(0); }
 .nav-item:hover { color: #40504c; background: rgba(96, 124, 117, 0.07); }
 .nav-item.is-active { color: #35564f; background: rgba(96, 124, 117, 0.1); }
-.sidebar__footer { margin-top: auto; display: grid; gap: 4px; }
+.sidebar__footer { margin-top: auto; display: grid; gap: 4px; flex-shrink: 0; }
 .sidebar__garden { border-bottom: 1px solid var(--line); border-radius: 0; }
 .memory-page > .sidebar, .narrative-page > .sidebar, .diary-page > .sidebar, .basement-page > .sidebar { animation: sidebar-arrive var(--sidebar-duration) var(--sidebar-ease) both; }
 @keyframes sidebar-arrive { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
@@ -1565,7 +1565,13 @@ label:has(input:focus-visible) {
   overflow-wrap: anywhere;
 }
 .fact-event-timeline .scene-entry__button time { margin-bottom: 8px; }
-.fact-event-timeline .scene-entry__excerpt:not(.is-fact) { max-width: min(820px, calc(100% - 60px)); }
+.fact-event-timeline .scene-entry__excerpt:not(.is-fact) {
+  max-width: min(820px, calc(100% - 60px));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
 .scene-entry__meta {
   display: inline-flex;
   flex-wrap: wrap;
@@ -4726,6 +4732,7 @@ label:has(input:focus-visible) {
   width: 100%;
   min-height: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-content: center;
   justify-items: center;
   overflow: hidden;
@@ -4738,7 +4745,7 @@ label:has(input:focus-visible) {
 .darkroom-door__content {
   position: relative;
   z-index: 1;
-  width: min(680px, calc(100vw - 48px));
+  width: min(680px, 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4802,6 +4809,85 @@ label:has(input:focus-visible) {
 .darkroom-door__actions button:hover {
   border-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.1);
+}
+.diary-modal-layer--darkroom-locked .diary-modal-layer__veil {
+  background: rgba(10, 15, 20, 0.82);
+}
+.darkroom-door__countdown p { margin: 18px 0 0; }
+.darkroom-door:focus { outline: none; }
+.darkroom-door--sequenced .darkroom-door__lock {
+  animation: darkroom-lock-appear 180ms ease-out both, darkroom-lock-shake 300ms ease-out 180ms;
+}
+.darkroom-door--sequenced .darkroom-door__line {
+  animation: darkroom-door-line-arrive 1s ease both;
+}
+.darkroom-door--sequenced .darkroom-door__line:nth-child(1) { animation-delay: 500ms; }
+.darkroom-door--sequenced .darkroom-door__line:nth-child(2) { animation-delay: 2000ms; }
+.darkroom-door--sequenced .darkroom-door__line:nth-child(3) { animation-delay: 4500ms; }
+.darkroom-door--sequenced .darkroom-door__line:nth-child(4) { animation-delay: 6500ms; }
+.darkroom-door--sequenced .darkroom-door__countdown,
+.darkroom-door--sequenced .darkroom-door__actions {
+  animation: darkroom-door-details-arrive 1s ease 6500ms both;
+}
+@keyframes darkroom-lock-appear {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes darkroom-lock-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20%, 60% { transform: translateX(-2px) rotate(-5deg); }
+  40%, 80% { transform: translateX(2px) rotate(5deg); }
+}
+@keyframes darkroom-door-line-arrive {
+  from { visibility: hidden; opacity: 0; transform: translateY(10px); }
+  to { visibility: visible; opacity: 1; transform: translateY(0); }
+}
+@keyframes darkroom-door-details-arrive {
+  from { visibility: hidden; opacity: 0; }
+  to { visibility: visible; opacity: 1; }
+}
+.darkroom-open-room__page h3:focus { outline: none; }
+.darkroom-open-room__body > aside > button:focus-visible {
+  outline: 1px solid #a2b3a9;
+  outline-offset: -1px;
+}
+.darkroom-typewriter { position: relative; }
+.darkroom-typewriter.is-typing .darkroom-open-room__content { cursor: pointer; }
+.darkroom-typewriter__skip {
+  position: absolute;
+  top: 18px;
+  right: 0;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: #96a19c;
+  font-family: var(--font-editorial-cjk);
+  font-size: 11px;
+  cursor: pointer;
+}
+.darkroom-typewriter__cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 3px;
+  background: #dbe4de;
+  vertical-align: -0.12em;
+  animation: darkroom-cursor-blink 1s steps(1) infinite;
+}
+@keyframes darkroom-cursor-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .darkroom-typewriter__cursor { animation: none; }
+  .darkroom-door, .darkroom-open-room, .darkroom-open-room__page { animation: none; }
+  .darkroom-door__line { transition: none; }
+  .darkroom-door--sequenced .darkroom-door__lock,
+  .darkroom-door--sequenced .darkroom-door__line,
+  .darkroom-door--sequenced .darkroom-door__countdown,
+  .darkroom-door--sequenced .darkroom-door__actions {
+    animation: none;
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+  }
 }
 .darkroom-open-room {
   position: relative;
@@ -4937,6 +5023,20 @@ label:has(input:focus-visible) {
   color: #bec8c3;
   font-family: var(--font-editorial-cjk);
 }
+.darkroom-letter-status { display: inline-flex; align-items: center; gap: 5px; }
+.darkroom-letter-sealed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 64px 16px;
+  color: #96a19c;
+  text-align: center;
+  font-family: var(--font-editorial-cjk);
+}
+.darkroom-open-room__page > .darkroom-letter-sealed p { margin: 0; color: #d8dfdb; }
+.darkroom-letter-sealed time { font-size: 14px; }
+.darkroom-letter-sealed small { font-size: 12px; line-height: 1.7; }
 .darkroom-open-room__page > div p {
   margin: 0 0 28px;
   color: #bec8c3;
@@ -5483,7 +5583,7 @@ label:has(input:focus-visible) {
     padding-inline: 28px;
   }
   .darkroom-door__content {
-    width: calc(100vw - 24px);
+    width: 100%;
   }
   .darkroom-door__dialogue { font-size: 16px; }
   .darkroom-open-room > header { padding-inline: 20px; }

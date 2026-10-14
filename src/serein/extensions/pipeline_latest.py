@@ -31,18 +31,8 @@ def materialize_agent_rules(role):
     return _identity_text((Path(__file__).parents[1]/'resources'/'agents'/role/'AGENTS.md').read_text('utf-8'))
 
 EVENT_WRITER_GUIDE_MAX_CHARS = 500
-EVENT_BODY_ACCEPT_MAX_CHARS = 1000     # 单篇正文硬上限（extend 时指本次新增段落）
-EVENT_BODY_TOTAL_MAX_CHARS = 1500      # extend 时「旧正文＋新增段落」总量上限
-
-# Local fork: 质量硬校验阈值已整块剥离到 event_quality_gate（本文件只留钩子）。
-# 这里保留同名别名，供历史调用点（event_rewrite 等）继续以 pipeline_latest.<常量> 取值。
-EVENT_BODY_SOURCE_OVERLAP_MAX = event_quality_gate.EVENT_BODY_SOURCE_OVERLAP_MAX
-EVENT_DISCARDED_OVERLAP_MAX = event_quality_gate.EVENT_DISCARDED_OVERLAP_MAX
-EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = event_quality_gate.EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS
-EVENT_BODY_RATIO_MIN_SOURCE_CHARS = event_quality_gate.EVENT_BODY_RATIO_MIN_SOURCE_CHARS
-EVENT_BODY_STRICT_MIN_SOURCE_CHARS = event_quality_gate.EVENT_BODY_STRICT_MIN_SOURCE_CHARS
-EVENT_BODY_OVERLAP_NGRAM = event_quality_gate.EVENT_BODY_OVERLAP_NGRAM
-EVENT_BODY_SOURCE_RATIO_MAX = event_quality_gate.EVENT_BODY_SOURCE_RATIO_MAX
+EVENT_BODY_ACCEPT_MAX_CHARS = 1000
+EVENT_BODY_TOTAL_MAX_CHARS = 1500  # 本地：extend 总量上限
 
 TRACK_EVENT_POLICIES = {'default', 'rolling_engineering'}
 EVENT_CURATOR_ACTIONS = {'create', 'extend', 'rewrite', 'merge'}
@@ -155,7 +145,12 @@ def event_curator_model_input(component: dict[str, Any], snowflake_message_ids: 
         source_ids = [int(value) for value in candidate.get('source_message_ids') or []]
         if not source_ids or set(source_ids).difference(context_by_id):
             raise ValueError('Track Curator base Event is missing bound originals')
-        base_events.append({'event_id': str(candidate.get('event_id') or candidate.get('item_id') or candidate.get('id') or ''), 'primary_track_id': str(candidate.get('primary_track_id') or candidate.get('track_id') or ''), 'blocking_flags': [flag for flag in EVENT_CURATOR_BLOCKING_BASE_FLAGS if bool(candidate.get(flag))], 'messages': event_track_message_payload([context_by_id[source_id] for source_id in source_ids], snowflake_message_ids)})
+        base = {'event_id': str(candidate.get('event_id') or candidate.get('item_id') or candidate.get('id') or ''), 'primary_track_id': str(candidate.get('primary_track_id') or candidate.get('track_id') or ''), 'blocking_flags': [flag for flag in EVENT_CURATOR_BLOCKING_BASE_FLAGS if bool(candidate.get(flag))], 'messages': event_track_message_payload([context_by_id[source_id] for source_id in source_ids], snowflake_message_ids)}
+        if component.get('writer_material_review') and type(component.get('material_contract_version')) is int and component['material_contract_version'] == 1:
+            inherited = pipeline_materials.trusted_materials(candidate, component.get('context_messages') or [])
+            base['extend_material_mode'] = 'new_sources_only' if inherited is not None else 'full_sources'
+            base['inherited_materials'] = inherited
+        base_events.append(base)
     tracks = [{'track_id': str(card.get('track_id') or ''), 'subject': str(card.get('subject') or ''), 'throughline': str(card.get('throughline') or ''), 'event_policy': str(card.get('event_policy') or 'default')} for card in component.get('track_cards') or []]
     return {'context_request_scope': {'track_ids': list(component.get('track_ids') or []), 'before_message_id': min(stable_ids), 'session_ids': [int(item) for item in component.get('context_session_ids') or []]}, 'tracks': tracks, 'units': units, 'base_events': base_events,
             'continuity_pairs': list(component.get('continuity_pairs') or []),
@@ -183,6 +178,15 @@ def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], 
                      '若告别或玩笑本身正在被讨论则保留。'
                      '附带状态确认和任务回执可省；若其本身是讨论中心或改变结果则保留。拒绝、纠正、条件、因果和有区别的语气不得省。\n'
                      if component.get('writer_material_review') else '')
+    if component.get('writer_material_review') and type(component.get('material_contract_version')) is int and component['material_contract_version'] == 1:
+        material_rule = material_rule.replace('按该 Event 的全部 owned source_message_id 逐条标记',
+            '按本次标注范围逐条标记').replace('不可遗漏或重复 owned 来源', '不可遗漏或重复本次需要标注的来源')
+        material_rule += ('普通 extend 仅在所选唯一 base 的 extend_material_mode=new_sources_only 时，'
+                         '不重复标注 inherited_materials 中的旧来源，只标注本 Event 新增 owned 来源；'
+                         '旧标注只读，host 按来源原样合入门槛和边界审阅，不得改写或再次输出。'
+                         'base 标为 full_sources 时仍标注旧+新完整来源；create、rewrite、merge 始终标注完整 owned 来源。'
+                         '完整来源绑定不变，旧原文仍可核对活动关系；reason 说明新材料如何推进旧经历。'
+                         '共享 bridge 边界可使用 host 合入的旧标注，只能引用该侧实际保留的原文片段。\n')
     boundary_rule = ('左右各自独占的 owned 原文，或共同拥有的 declared bridge 中仅一侧 main/mixed 实际保留的片段，'
                      '都可作为该侧逐字边界证据。双侧保留的同一引文不能证明边界；'
                      '不要删改完整 bridge ownership 制造独占来源；引文不得跨越省略片段拼接。'
@@ -643,6 +647,7 @@ def normalize_event_curator_output(output: dict[str, Any], component: dict[str, 
     if payload_keys == {'events', 'skip_unit_roots', 'defer_unit_roots'}:
         output = _expand_compact_event_curator_output(output, component)
     normalized = _normalize_expanded_event_curator_output(output, component)
+    review = pipeline_materials.merge_review(review, output, component)
     validate_bridge_owners(output, component, review)
     errors = curator_receipt_errors(review, output, component)
     if errors:
@@ -731,11 +736,7 @@ def build_event_writer_prompt(day: str, title: str, messages: list[dict[str, Any
     materialized_track_cards = materialized_track_cards_payload(track_cards)
     agent_rules = materialize_agent_rules('event_writer') if include_role_rules else ''
     rules_block = f'{agent_rules}\n\n' if agent_rules else ''
-    example_quote = '我把工具收进抽屉，关了灯。'
-    # Local fork 回退：这里原本挂了一段真 Event 当风格范例，已删除。
-    # 原因是枚举式举例会让模型往例子的形态上套，而实际对话形态远不止那一种；
-    # 正文形态改由 AGENTS.md「先想清楚这段经历该怎么讲」用判据描述，
-    # 偏差由 validate_event_writer_result 的三条质量校验兜底。
+    example_quote = '把旧书放回书架。'
     sufficient = {'evidence_sufficient': True,
                   'kept_details': [example_quote], 'discarded_details': [],
                   'self_review': {key: True for key in _SELF_REVIEW_KEYS},
@@ -764,15 +765,7 @@ def build_event_writer_repair_prompt(original_prompt, failed_result, violations)
     return original_prompt+f'\n请按原角色规则修正结构或证据校验错误，保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。重新核对 self_review。\n'+json.dumps({'violations':violations,'failed_result':failed_result},ensure_ascii=False)
 
 
-# Local fork: 质量校验工具函数已并入 event_quality_gate（本文件不再各留一份），
-# 这里保留同名别名，供历史调用点继续以 pipeline_latest.<函数> 调用。
-_compact_len = event_quality_gate._compact_len
-_overlap_ngrams = event_quality_gate._overlap_ngrams
-_overlap_ratio = event_quality_gate._overlap_ratio
-_writer_owned_text = event_quality_gate._writer_owned_text
-
-
-def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None, writer_mode: str = 'create') -> list[str]:
+def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None) -> list[str]:
     canonicalize_claim_group_ids(result)
     title = str(result.get('title') or '').strip()
     body = str(result.get('event_draft') or '').strip()
@@ -795,14 +788,10 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
         violations.append('标题为空')
     if not body:
         violations.append('正文为空')
-    body_cap = EVENT_BODY_TOTAL_MAX_CHARS if writer_mode == 'append' else EVENT_BODY_ACCEPT_MAX_CHARS
-    if len(body) > body_cap:
-        violations.append(f'正文超过容错上限 {body_cap} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
+    if len(body) > EVENT_BODY_ACCEPT_MAX_CHARS:
+        violations.append(f'正文超过容错上限 {EVENT_BODY_ACCEPT_MAX_CHARS} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
     if len(kept) > 12:
         violations.append(f'kept_details 最多 12 项：{len(kept)}')
-    # —— 质量硬校验（Local fork 追加）——
-    # 整块实现已剥离到 event_quality_gate；此处只留钩子，官方更新时无须再三方对照。
-    # 插入位置必须紧跟 kept_details 检查，以保持 violations 顺序与剥离前一致。
     violations.extend(event_quality_gate.writer_body_violations(body, owned_sources, discarded))
     if not isinstance(result.get('discarded_details'), list):
         violations.append('discarded_details 缺失或不是数组')

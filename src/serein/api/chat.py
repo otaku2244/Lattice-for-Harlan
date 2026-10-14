@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..deployment import read_settings, task_model, chat_models, client_model_id
 from ..chat_context import ClientContext
-from ..model_runtime import request_for, AnthropicStream, complete, UpstreamError
+from ..model_runtime import request_for, AnthropicStream, complete, UpstreamError, safe_upstream_http_error
 from ..core.store import digest, encode, Conflict
 from .. import chat_resume
 from .. import chat_resume_auto
@@ -43,15 +43,24 @@ async def transcribe_archived_images(settings, message_id):
     from ..compat.raw_archive import raw_archive
     from ..extensions.pipeline_images import freeze_images
     from ..image_transcription import (reusable_transcriptions, mark_transcription,
-        persist_transcriptions, transcribe_images, transcription_context)
+        persist_transcriptions, transcribe_images, transcription_context,
+        transcribed_image_receipts)
     event = raw_archive(settings).get_event(message_id)
     if event is None:
         raise ValueError('Source image message is missing')
     async def run():
-        images = await asyncio.to_thread(freeze_images, [
+        originals = [
             {'source_message_id': message_id, 'position': index,
              'evidence_role': 'owned', 'url': item['url']}
-            for index, item in enumerate(event['metadata'].get('attachments', []), 1)])
+            for index, item in enumerate(event['metadata'].get('attachments', []), 1)]
+        if len(originals) > 24:
+            raise ValueError('本批图片超过 24 张，请减小输入批次')
+        receipts = await asyncio.to_thread(transcribed_image_receipts, [event], originals,
+                                          require_source_fingerprint=True)
+        cached_positions = {item['position'] for item in receipts}
+        missing = [image for image in originals if image['position'] not in cached_positions]
+        frozen = await asyncio.to_thread(freeze_images, missing)
+        images = sorted(receipts + frozen, key=lambda image: image['position'])
         cached = reusable_transcriptions(settings, [event], images)
         if len(cached) == len(images):
             return transcription_context(cached), {'status':'cached','message_id':message_id,'images':len(cached)}
@@ -111,7 +120,7 @@ def remove_images_for_eyes(messages):
             message['content'] = ''.join(str(part.get('text') or part.get('input_text') or '') for part in content)
         else:
             message['content'] = content or (
-                '[Serein Eyes transcribed the attached image; use the system-provided transcription.]')
+                '[Attached image omitted from the main-model input; refer to the image source notes.]')
     return rewritten
 
 
@@ -176,8 +185,20 @@ def routes(settings, services, auth):
         observation.start(window_id, query, use_memory)
         archive_input = prepare_turn(window_id, incoming)
         image_context = ''
+        image_receipt = {}
         if state['features'].get('image_eyes'):
-            image_context, image_receipt = await transcribe_image_turn(settings, archive_input)
+            try:
+                image_context, image_receipt = await transcribe_image_turn(settings, archive_input)
+            except HTTPException as exc:
+                # A read/model failure may fall back to text. Failure to retain
+                # the original source is still an error, not a successful save.
+                if exc.status_code not in (409, 502):
+                    raise
+                image_context = ('Serein Eyes could not read the attached images. '
+                    'No image transcription is available for this request. '
+                    'Respond using the user text only; do not claim to have seen the images.')
+                image_receipt = {'status':'failed', 'fallback':'text_only',
+                    'reason':'image_model_unconfigured' if exc.status_code == 409 else 'image_read_failed'}
             if image_receipt:
                 observation.payload['image_transcription'] = {**image_receipt, 'mode':'eyes'}
         elif state['features'].get('image_transcription_async') and archive_input and archive_input['user'].get('attachments'):
@@ -195,14 +216,15 @@ def routes(settings, services, auth):
         cache_contract={'model':{k:v for k,v in model.items() if k!='api_key'}, 'memory':use_memory,
                         'operit':state['upstream']['operit_enabled'], 'identity':state['identity'],
                         'features':state['features'],'assignments':state['assignments'], 'resume':state['resume'],
+                        'eyes_fallback':image_receipt.get('fallback') == 'text_only',
                         'clock':state['clock']}
         cache_window = window_id + ':' + digest(encode(cache_contract)) if window_id else uuid4().hex
         resume_query = chat_resume.continuation(query)
-        command_resume = state['features']['resume'] and state['resume']['mode']=='command'
+        command_resume = state['features']['resume'] and state['resume']['command_enabled']
         if resume_query is not None and not state['features']['resume']:
             raise HTTPException(409, 'Enable resume in Settings before using /resume')
         if resume_query is not None and not command_resume:
-            raise HTTPException(409, 'MCP resume is active; use the resume tool or select command mode in Settings')
+            raise HTTPException(409, 'Enable the /resume command in Settings before using it')
         snapshot_key, snapshot = context._find_turn_injection_snapshot(cache_window, incoming, body)
         replay = snapshot is not None and (not query or len(incoming)==snapshot['source_message_count'])
         selected = []
@@ -279,7 +301,7 @@ def routes(settings, services, auth):
                 summary = recall_summary(result)
                 recall_state = 'selected' if selected else 'skipped' if result.get('status') == 'skipped' or (result.get('routing') or {}).get('action') == 'skip' else 'no_match'
             feature_context = ''
-            if query and any(state['features'][key] for key in ('memos','persona','anti_retreat')):
+            if query and any(state['features'][key] for key in ('memos','persona','anti_retreat','dream_morning')):
                 from ..chat_features import prepare
                 feature_context,feature_receipt = await prepare(settings.database,window_id,query,incoming)
             clock_context = current_time_context(state['clock']['timezone']) if query and state['features']['current_time'] else ''
@@ -346,7 +368,8 @@ def routes(settings, services, auth):
             except (UpstreamError, httpx.HTTPStatusError) as exc:
                 if headers_out['X-Serein-Resume']=='loaded' and chat_resume.context_limit(exc.response):
                     raise HTTPException(413, 'The upstream model rejected the context length. Reduce resume selections or chat history, or choose a model with a larger context window.') from None
-                raise HTTPException(502,'Upstream request failed or returned an invalid response') from None
+                status, detail = safe_upstream_http_error(exc.response)
+                raise HTTPException(status, detail) from None
             except (httpx.HTTPError,ValueError,KeyError,IndexError,TypeError):
                 raise HTTPException(502,'Upstream request failed or returned an invalid response') from None
             completed(message)
@@ -362,7 +385,9 @@ def routes(settings, services, auth):
                 if too_long:
                     await client.aclose()
                     raise HTTPException(413, 'The upstream model rejected the context length. Reduce resume selections or chat history, or choose a model with a larger context window.')
-                raise ValueError('Upstream rejected the request')
+                status, detail = safe_upstream_http_error(response)
+                await client.aclose()
+                raise HTTPException(status, detail)
         except (httpx.HTTPError,ValueError):
             await client.aclose()
             raise HTTPException(502,'Upstream streaming request failed') from None

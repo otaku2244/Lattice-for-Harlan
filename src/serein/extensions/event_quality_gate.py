@@ -23,9 +23,6 @@ EVENT_BODY_SOURCE_OVERLAP_MAX = 0.40
 EVENT_DISCARDED_OVERLAP_MAX = 0.50
 EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = 100
 EVENT_BODY_RATIO_MIN_SOURCE_CHARS = 300
-# 原文不足此长度时不做「不得长于原文」与「第一人称」两条硬校验：十几字的原文承载的
-# 信息量撑不起这些判断，而「正文必须≤原文净字数」与「正文必须含我」两条叠加会直接无解。
-EVENT_BODY_STRICT_MIN_SOURCE_CHARS = 100
 EVENT_BODY_OVERLAP_NGRAM = 6
 EVENT_BODY_SOURCE_RATIO_MAX = 0.70
 
@@ -93,7 +90,7 @@ def writer_body_violations(body: str, owned_sources: list[dict[str, Any]] | None
                     f'正文与 owned 原文逐字重合 {overlap:.0%}，超过 {EVENT_BODY_SOURCE_OVERLAP_MAX:.0%} 上限；'
                     '这是把原文换了一遍人称的搬运稿，不是改写。请重组句式与语序，'
                     '把叮嘱／判断放回它发生的场景，并保住第一人称主体。')
-        if source_chars >= EVENT_BODY_STRICT_MIN_SOURCE_CHARS:
+        if source_chars:
             body_chars = _compact_len(body)
             if body_chars > source_chars:
                 violations.append(
@@ -104,10 +101,10 @@ def writer_body_violations(body: str, owned_sources: list[dict[str, Any]] | None
                 violations.append(
                     f'正文净字数 {body_chars} 字，是 owned 原文 {source_chars} 字的 {body_chars / source_chars:.0%}，'
                     f'超过 {EVENT_BODY_SOURCE_RATIO_MAX:.0%} 上限；只有几条原文时更不能逐条展开，请按真实信息量取舍。')
-            if '我' not in body:
-                violations.append(
-                    '正文通篇没有第一人称主体（未出现“我”）；'
-                    '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
+        if '我' not in body:
+            violations.append(
+                '正文通篇没有第一人称主体（未出现“我”）；'
+                '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
         for detail in discarded:
             inflow = _overlap_ratio(body, detail, EVENT_BODY_OVERLAP_NGRAM)
             if inflow is not None and inflow > EVENT_DISCARDED_OVERLAP_MAX:

@@ -49,8 +49,8 @@ def _length_budget_prompt(prompt: str, result: dict[str, Any],
     source_chars = G._compact_len(G._writer_owned_text(owned_payload))
     if not source_chars:
         return None
-    if source_chars >= G.EVENT_BODY_RATIO_MIN_SOURCE_CHARS:
-        budget = int(source_chars * G.EVENT_BODY_SOURCE_RATIO_MAX)
+    if source_chars >= L.EVENT_BODY_RATIO_MIN_SOURCE_CHARS:
+        budget = int(source_chars * L.EVENT_BODY_SOURCE_RATIO_MAX)
     else:
         budget = source_chars
     budget = min(L.EVENT_BODY_ACCEPT_MAX_CHARS, max(60, budget))

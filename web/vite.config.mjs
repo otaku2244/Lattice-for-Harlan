@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { eventMailboxBridge } from './server/eventMailboxBridge.mjs';
 import { appearanceBridge } from './server/appearanceBridge.mjs';
+import { backupDownload } from './server/backupDownload.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, posix, win32 } from "node:path";
@@ -694,6 +696,7 @@ function sereinMemoryBridge() {
     configureServer(server) {
       const narrativePreviewJobs = createNarrativePreviewJobs();
       appearanceBridge(server, callSereinBackend, readJsonBody);
+      eventMailboxBridge(server, callSereinBackend, readJsonBody);
       server.middlewares.use("/__serein/export/markdown", async (request,response)=>{
         if(request.method!=="GET"){response.statusCode=405;response.end();return;}
         try {
@@ -708,20 +711,7 @@ function sereinMemoryBridge() {
           response.end(Buffer.from(await result.arrayBuffer()));
         } catch {response.statusCode=502;response.end("Export unavailable");}
       });
-      server.middlewares.use("/__serein/export/backup", async (request,response)=>{
-        if(request.method!=="GET"){response.statusCode=405;response.end();return;}
-        try {
-          const base=process.env.SEREIN_MEMORY_URL;
-          const token=process.env.SEREIN_MEMORY_TOKEN;
-          if(!base || !token)throw new Error("backend_not_configured");
-          const result=await fetch(base.replace(/\/$/,"")+"/v1/export/backup",{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(60_000)});
-          response.statusCode=result.status;
-          response.setHeader("Cache-Control","no-store");
-          response.setHeader("Content-Type",result.ok?"application/octet-stream":"application/json");
-          if(result.ok)response.setHeader("Content-Disposition",'attachment; filename="serein-backup.db"');
-          response.end(Buffer.from(await result.arrayBuffer()));
-        } catch {response.statusCode=502;response.end("Export unavailable");}
-      });
+      server.middlewares.use("/__serein/export/backup", backupDownload);
       server.middlewares.use("/__serein/migration", async (request,response)=>{
         response.setHeader("Cache-Control","no-store");
         const path=new URL(request.url,"http://localhost").pathname;
@@ -784,9 +774,11 @@ function sereinMemoryBridge() {
         response.setHeader("Cache-Control", "no-store");
         const candidates = request.url?.split("?")[0] === "/resume-candidates";
         const prepare = request.url?.split("?")[0] === "/prepare-memory";
+        const indexStatus = request.url?.split("?")[0] === "/index-status";
+        const resumeIndex = request.url?.split("?")[0] === "/resume-index";
         const discovery = request.url?.split("?")[0] === "/models/discover";
         const template = request.url?.split("?")[0] === "/upstreams-template";
-        if (!(candidates ? ["GET"] : prepare || template || discovery ? ["POST"] : ["GET", "PATCH"]).includes(request.method)) {
+        if (!(candidates || indexStatus ? ["GET"] : prepare || resumeIndex || template || discovery ? ["POST"] : ["GET", "PATCH"]).includes(request.method)) {
           response.statusCode = 405; response.end(JSON.stringify({ error: "method_not_allowed" })); return;
         }
         // Mutations are same-origin JSON requests, never cross-site form posts.
@@ -795,9 +787,9 @@ function sereinMemoryBridge() {
           response.statusCode = 403; response.end(JSON.stringify({ error: "origin_not_allowed" })); return;
         }
         try {
-          const result = await callSereinBackend(candidates ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
+          const result = await callSereinBackend(candidates || indexStatus || resumeIndex ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
             method: request.method,
-            ...(request.method === "PATCH" || template || discovery ? { body: await readJsonBody(request, 256_000) } : {}),
+            ...(request.method === "PATCH" || resumeIndex || template || discovery ? { body: await readJsonBody(request, 256_000) } : {}),
           }, {timeout: prepare ? 600_000 : 30_000});
           response.statusCode = result.status; response.end(JSON.stringify(result.payload));
         } catch {
@@ -1710,6 +1702,12 @@ function sereinMemoryBridge() {
           const sceneId = String(body.sceneId || "").trim();
           const expectedUpdatedAt = String(body.expectedUpdatedAt || "").trim();
           const status = body.status === "archived" ? "archived" : "active";
+          if ((body.restoreSurface !== undefined && typeof body.restoreSurface !== "boolean")
+              || (body.restoreSurface === true && body.status !== "active")) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ error: "invalid_scene_status", message: "恢复可浮现需要 active 状态和布尔开关。" }));
+            return;
+          }
           if (!/^[A-Za-z0-9_.:#-]{1,160}$/.test(sceneId) || !expectedUpdatedAt) {
             response.statusCode = 400;
             response.end(JSON.stringify({ error: "invalid_scene_status", message: "缺少 Scene 或版本信息。" }));
@@ -1719,6 +1717,7 @@ function sereinMemoryBridge() {
             scene_id: sceneId,
             expected_updated_at: expectedUpdatedAt,
             status,
+            ...(body.restoreSurface === undefined ? {} : { restore_surface: body.restoreSurface }),
           });
           response.statusCode = result?.status === "conflict" ? 409 : result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
