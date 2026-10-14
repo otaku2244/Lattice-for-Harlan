@@ -1,6 +1,7 @@
 """Persisted foreground-requested work, leased across HTTP/MCP processes."""
 import asyncio
 import json
+import logging
 import time
 from contextvars import ContextVar
 from uuid import uuid4
@@ -239,16 +240,22 @@ async def work(settings,key,arguments):
 
 async def run(settings):
     """Queued work survives page navigation; stale running work is explicitly resumable."""
+    log=logging.getLogger(__name__)
     while True:
-        recover_image_work(settings.database)
-        with Store(settings.database,read_only=True) as store:
-            queued=[json.loads(row[0]) for row in store.conn.execute(
-                "SELECT value_json FROM background_state WHERE name LIKE 'work:%' AND json_extract(value_json,'$.status')='queued'")]
-        for value in queued:
-            if value.get('next_attempt_at', 0) > time.time():
-                continue
-            try:
-                await execute(settings.database,value['id'],lambda:work(settings,value['id'],value.get('arguments',{})),queued_id=value['run_id'])
-            except Exception:
-                pass  # The task's durable error is returned by the status endpoint.
+        try:
+            recover_image_work(settings.database)
+            with Store(settings.database,read_only=True) as store:
+                queued=[json.loads(row[0]) for row in store.conn.execute(
+                    "SELECT value_json FROM background_state WHERE name LIKE 'work:%' AND json_extract(value_json,'$.status')='queued'")]
+            for value in queued:
+                if value.get('next_attempt_at', 0) > time.time():
+                    continue
+                try:
+                    await execute(settings.database,value['id'],lambda:work(settings,value['id'],value.get('arguments',{})),queued_id=value['run_id'])
+                except Exception:
+                    pass  # The task's durable error is returned by the status endpoint.
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception('Requested work loop error; retrying')
         await asyncio.sleep(.5)
