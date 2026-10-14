@@ -39,6 +39,7 @@ EVENT_BODY_SOURCE_OVERLAP_MAX = 0.40       # 正文与 owned 原文的逐字重�
 EVENT_DISCARDED_OVERLAP_MAX = 0.50         # discarded_details 与正文的重合上限
 EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = 100  # 原文太短时不启用重合检测（样本不足）
 EVENT_BODY_RATIO_MIN_SOURCE_CHARS = 300    # 原文不足此长度时不做比例检测，只兜底「不得长于原文」
+EVENT_BODY_STRICT_MIN_SOURCE_CHARS = 100  # 原文不足此长度时不做质量硬校验（比例与第一人称）：短原文承载的信息量撑不起这些判断，强行执行会与「不得长于原文」叠加成无解
 EVENT_BODY_OVERLAP_NGRAM = 6
 EVENT_BODY_SOURCE_RATIO_MAX = 0.50         # 正文净字数占 owned 原文净字数的上限（仅原文达 RATIO_MIN 时生效）
 
@@ -803,7 +804,7 @@ def _writer_owned_text(owned_sources: list[dict[str, Any]] | None) -> str:
     return '\n'.join(parts)
 
 
-def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None) -> list[str]:
+def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None, writer_mode: str = 'create') -> list[str]:
     canonicalize_claim_group_ids(result)
     title = str(result.get('title') or '').strip()
     body = str(result.get('event_draft') or '').strip()
@@ -826,8 +827,9 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
         violations.append('标题为空')
     if not body:
         violations.append('正文为空')
-    if len(body) > EVENT_BODY_ACCEPT_MAX_CHARS:
-        violations.append(f'正文超过容错上限 {EVENT_BODY_ACCEPT_MAX_CHARS} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
+    body_cap = EVENT_BODY_TOTAL_MAX_CHARS if writer_mode == 'append' else EVENT_BODY_ACCEPT_MAX_CHARS
+    if len(body) > body_cap:
+        violations.append(f'正文超过容错上限 {body_cap} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
     if len(kept) > 12:
         violations.append(f'kept_details 最多 12 项：{len(kept)}')
     # —— 质量硬校验（Local fork 追加）——
@@ -841,7 +843,7 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
                     f'正文与 owned 原文逐字重合 {overlap:.0%}，超过 {EVENT_BODY_SOURCE_OVERLAP_MAX:.0%} 上限；'
                     '这是把原文换了一遍人称的搬运稿，不是改写。请重组句式与语序，'
                     '把叮嘱／判断放回它发生的场景，并保住第一人称主体。')
-        if source_chars:
+        if source_chars >= EVENT_BODY_STRICT_MIN_SOURCE_CHARS:
             body_chars = _compact_len(body)
             if body_chars > source_chars:
                 violations.append(
@@ -852,10 +854,10 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
                 violations.append(
                     f'正文净字数 {body_chars} 字，是 owned 原文 {source_chars} 字的 {body_chars / source_chars:.0%}，'
                     f'超过 {EVENT_BODY_SOURCE_RATIO_MAX:.0%} 上限；只有几条原文时更不能逐条展开，请按真实信息量取舍。')
-        if '我' not in body:
-            violations.append(
-                '正文通篇没有第一人称主体（未出现“我”）；'
-                '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
+            if '我' not in body:
+                violations.append(
+                    '正文通篇没有第一人称主体（未出现“我”）；'
+                    '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
         for detail in discarded:
             inflow = _overlap_ratio(body, detail, EVENT_BODY_OVERLAP_NGRAM)
             if inflow is not None and inflow > EVENT_DISCARDED_OVERLAP_MAX:

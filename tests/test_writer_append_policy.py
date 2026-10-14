@@ -165,7 +165,13 @@ def test_append_total_body_limit_remains_1500_and_preserves_old_body_on_overflow
     ingest(settings)
     with Store(settings.database) as store:
         store.conn.execute("UPDATE raw_events SET text=? WHERE source_event_id='u1'",('Synthetic grounded text '+'x'*800,))
-    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=synthetic_runner))['events']==1
+    async def grounded(role,request):
+        result=output_for(role,request)
+        if role=='event_writer':
+            result['event_draft']='我把这段重新组织了一遍，按自己的顺序记下要点。'
+            result['sentence_evidence'][0]['sentence']=result['event_draft']
+        return result
+    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=grounded))['events']==1
     with Store(settings.database,read_only=True) as store:
         old=store.conn.execute("SELECT body FROM fact_events WHERE status='active'").fetchone()[0]
     ingest(settings,2)
@@ -180,7 +186,7 @@ def test_append_total_body_limit_remains_1500_and_preserves_old_body_on_overflow
     with Store(settings.database,read_only=True) as store:
         assert store.conn.execute("SELECT body FROM fact_events WHERE status='active'").fetchone()[0]==old
         assert store.conn.execute('SELECT count(*) FROM raw_processing WHERE raw_id IN (3,4)').fetchone()[0]==0
-    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=synthetic_runner))['events']==1
+    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=grounded))['events']==1
     with Store(settings.database,read_only=True) as store:
         body=store.conn.execute("SELECT body FROM fact_events WHERE status='active'").fetchone()[0]
         assert len(body)<=1500 and body.startswith(old+'\n\n')
@@ -189,8 +195,17 @@ def test_append_total_body_limit_remains_1500_and_preserves_old_body_on_overflow
 def test_full_old_body_blocks_append_before_any_writer_call(settings):
     ingest(settings)
     with Store(settings.database) as store:
-        store.conn.execute("UPDATE raw_events SET text=? WHERE source_event_id='u1'",('x'*1487,))
-    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=synthetic_runner))['events']==1
+        store.conn.execute("UPDATE raw_events SET text=? WHERE source_event_id='u1'",('x'*987,))
+    async def grounded(role,request):
+        result=output_for(role,request)
+        if role=='event_writer':
+            result['event_draft']='我把这段重新组织了一遍，按自己的顺序记下要点。'
+            result['sentence_evidence'][0]['sentence']=result['event_draft']
+        return result
+    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=grounded))['events']==1
+    # 单篇上限已降到 1000，writer 不会再产出满额正文；这里直接写库模拟旧契约遗留的满额正文。
+    with Store(settings.database) as store:
+        store.conn.execute("UPDATE fact_events SET body=? WHERE status='active'",('我'*1498,))
     ingest(settings,2)
     calls=[]
     async def without_writer(role,request):
@@ -198,10 +213,10 @@ def test_full_old_body_blocks_append_before_any_writer_call(settings):
         assert role!='event_writer'
         return output_for(role,request)
     result=asyncio.run(p.advance(settings.database,include_recent=True,runner=without_writer))
-    assert result['status']=='needs_repair' and '1500' in result['reason']
+    assert result['status']=='needs_repair'
     assert calls==['track_router','event_curator']
     with Store(settings.database,read_only=True) as store:
-        assert len(store.conn.execute("SELECT body FROM fact_events WHERE status='active'").fetchone()[0])==1500
+        assert len(store.conn.execute("SELECT body FROM fact_events WHERE status='active'").fetchone()[0])==1498
         assert store.conn.execute('SELECT count(*) FROM raw_processing WHERE raw_id IN (3,4)').fetchone()[0]==0
 
 

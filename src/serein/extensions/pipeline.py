@@ -886,7 +886,7 @@ def validate(request,output):
                     transcriptions.setdefault(item['source_message_id'],[]).append(str(item.get('text') or ''))
             owned=[{**item,'evidence_texts':transcriptions.get(item.get('id'),[])}
                    for item in request.get('messages') or []]
-            errors=latest.validate_event_writer_result(output,owned)
+            errors=latest.validate_event_writer_result(output,owned,str(request.get('writer_mode') or 'create'))
             if errors:raise ValueError('; '.join(errors))
 
 

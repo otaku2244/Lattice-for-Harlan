@@ -374,17 +374,17 @@ def test_settled_event_is_queued_only_when_arc_linker_is_selected(settings):
         assert tuple(row)==(fact['item_id'],fact['fingerprint'],'pending')
 
 
-def test_writer_body_uses_1000_guidance_with_1500_tolerance():
+def test_writer_body_respects_1000_hard_cap():
     request={'messages':[{'id':1,'content':'A book was returned'}]}
     output=output_for('event_writer',request)
-    output['event_draft']='书还了。'
+    output['event_draft']='我把书还了。'
     output['sentence_evidence'][0]['sentence']=output['event_draft']
     assert latest.validate_event_writer_result(output)==[]
-    output['event_draft']='书'*1500
+    output['event_draft']='我'+'书'*999
     output['sentence_evidence'][0]['sentence']=output['event_draft']
     assert latest.validate_event_writer_result(output)==[]
-    output['event_draft']='书'*1501
-    assert '正文超过容错上限 1500 字：1501 字' in ' '.join(latest.validate_event_writer_result(output))
+    output['event_draft']='书'*1001
+    assert '正文超过容错上限 1000 字：1001 字' in ' '.join(latest.validate_event_writer_result(output))
     output['title']=''
     assert '标题为空' in latest.validate_event_writer_result(output)
     output['kept_details']=['anchor']*13
@@ -443,13 +443,13 @@ def test_model_counting_tolerance_settles_without_truncation(settings):
     p.submit(settings.database,curator['job_id'],output_for(curator['role'],curator['request']))
     task=asyncio.run(p.advance(settings.database,include_recent=True))
     output=output_for('event_writer',task['request'])
-    output['event_draft']='书'*1500
+    output['event_draft']='我'+'书'*999
     output['sentence_evidence'][0]['sentence']=output['event_draft']
     p.submit(settings.database,task['job_id'],output)
     assert asyncio.run(p.advance(settings.database,include_recent=True))['events']==1
     with Store(settings.database,read_only=True) as store:
         saved=store.conn.execute('SELECT body FROM fact_events').fetchone()[0]
-        assert saved==output['event_draft'] and len(saved)==1500
+        assert saved==output['event_draft'] and len(saved)==1000
 
 
 def test_writer_prompt_examples_match_both_evidence_outcomes():
