@@ -184,6 +184,7 @@
   "src/serein/extensions/builtin.py",
   "src/serein/extensions/event_pipeline.py",
   "src/serein/extensions/event_rewrite.py",
+  "src/serein/extensions/event_quality_gate.py",
   "src/serein/extensions/handoff.py",
   "src/serein/extensions/narrative_authoring.py",
   "src/serein/extensions/narrative_tools.py",
