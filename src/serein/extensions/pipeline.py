@@ -790,7 +790,7 @@ def request_for(database,batch,role,**fields):
                     if event.get('source_materials') is not None else None,append_only=append_only,
                 context_read=bool(fields.get('context_read')))
             if append_only:
-                remaining=max(0,latest.EVENT_BODY_ACCEPT_MAX_CHARS-len(selected_bases[0]['body'])-2)
+                remaining=max(0,latest.EVENT_BODY_TOTAL_MAX_CHARS-len(selected_bases[0]['body'])-2)
                 request['append_remaining_chars']=remaining
                 prompt+='\n只写新 owned 原文构成的后续段落，不复述或重写旧经历；旧正文由程序原样保留并追加，不重写旧标题或召回设置。\n'
                 prompt+=f'整篇 Event 总计不得超过 1500 字符（含拼接的两个换行）；本次新增段落最多 {remaining} 字符。写清就停，不截断旧正文。\n'
@@ -1142,7 +1142,7 @@ async def job(database,batch,request,key,runner):
                 elif image:record_image_failure(database,image,error)
                 else:fail_stage(database,batch,identifier,error)
                 if (not image and (not received or not isinstance(error,ValueError))) or attempt==attempts-1:raise
-                correction='\n请按原角色规则修正结构或证据校验错误，只返回完整 JSON。保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。重新核对 self_review。编号使用原始编号，不得按展示位置重新编号。\n'+encode({'validation_error':reason,'allowed_ids':allowed_ids(request)})
+                correction='\n请按原角色规则修正结构或证据校验错误，只返回完整 JSON。保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。若违规是正文与 owned 原文逐字重合过高，请重组句式与语序、把叮嘱与判断放回发生的场景，不得只换人称；若违规是正文没有第一人称主体，请用已在原文里表达过的判断、感受或想象做视角锚点，不得新编原文没有的动作或心理。若违规是正文超过篇幅上限或篇幅超过 owned 原文，请按原文真实承载的信息量重新取舍，删掉重复意思、评价性复述与收尾语，不得靠注水或扩写凑篇幅。重新核对 self_review。编号使用原始编号，不得按展示位置重新编号。\n'+encode({'validation_error':reason,'allowed_ids':allowed_ids(request)})
                 room=policy['max_prompt_chars']-len(request['rules'])-len(request['prompt'])-len(correction)-80
                 if room<0:raise ValueError('提示词上限不足以容纳纠错请求，请减小每批输入。') from error
                 prompt=request['prompt']+correction+'\n上一份不合格输出（仅用于纠错，可能截断）：\n'+raw[:min(room,10000)]
@@ -1235,7 +1235,7 @@ def settle(database,batch,data,routed,plans):
                 if len(bases)!=1 or not str(written['event_draft']).strip():
                     raise ValueError('Continuation requires one base and new prose')
                 title=bases[0]['title'];body=bases[0]['body']+'\n\n'+written['event_draft'].strip()
-                if len(body)>latest.EVENT_BODY_ACCEPT_MAX_CHARS:
+                if len(body)>latest.EVENT_BODY_TOTAL_MAX_CHARS:
                     raise FactEventSettlementBlockedError('旧正文与新增段落总计超过 1500 字符，未保存；请压缩新增段落或明确重建为整篇 rewrite，旧正文与原话仍保留。')
                 recallable=None if bases[0]['recallable'] is None else bool(bases[0]['recallable'])
             else:

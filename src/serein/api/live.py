@@ -107,6 +107,31 @@ def routes(settings, services, auth):
     def revise(body: dict):
         return written(events.revise(body.get('item_id',''),**{k:v for k,v in body.items() if k in ('title','body','importance','recallable')}))
 
+    @router.post('/api/fact-events/rewrite')
+    async def rewrite(body: dict):
+        """Local fork: 让 event_writer 重新拟稿并落库，不经过人工预览。
+
+        重写口径是 create（不给旧稿），机械校验不过就不落库——宁可报错也不写入更差的稿。
+        """
+        from ..extensions.event_rewrite import rewrite_event_draft
+        item_id = str(body.get('item_id') or '').strip()
+        if not item_id:
+            return JSONResponse(status_code=400,content={'ok':False,'status':'invalid',
+                'message':'缺少 item_id。'})
+        try:
+            draft = await rewrite_event_draft(settings.database,item_id)
+        except ValueError as error:
+            return JSONResponse(status_code=404,content={'ok':False,'status':'not_found',
+                'message':str(error)})
+        except Exception as error:
+            return JSONResponse(status_code=502,content={'ok':False,'status':'upstream_error',
+                'message':'重写调用模型失败：%s' % error})
+        if not draft.get('ok'):
+            return JSONResponse(status_code=422,content={'ok':False,'status':'rejected',
+                'message':'重写未通过机械校验，未落库。','violations':draft.get('violations'),
+                'attempts':draft.get('attempts'),'history':draft.get('history')})
+        return written(events.revise(item_id,title=draft['title'],body=draft['body']))
+
     @router.post('/api/fact-events/status')
     def status(body: dict):
         return written(events.set_status(body.get('item_id',''),body.get('status','')))

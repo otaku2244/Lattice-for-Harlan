@@ -30,7 +30,17 @@ def materialize_agent_rules(role):
     return _identity_text((Path(__file__).parents[1]/'resources'/'agents'/role/'AGENTS.md').read_text('utf-8'))
 
 EVENT_WRITER_GUIDE_MAX_CHARS = 500
-EVENT_BODY_ACCEPT_MAX_CHARS = 1500
+EVENT_BODY_ACCEPT_MAX_CHARS = 1000     # 单篇正文硬上限（extend 时指本次新增段落）
+EVENT_BODY_TOTAL_MAX_CHARS = 1500      # extend 时「旧正文＋新增段落」总量上限
+
+# Local fork: 质量硬校验阈值。依据 scripts/overlap_probe.py 的实测——
+# 合规改写 6-gram 重合约 12%~29%，换人称的搬运稿约 59.7%，中间有 30 点以上空档。
+EVENT_BODY_SOURCE_OVERLAP_MAX = 0.40       # 正文与 owned 原文的逐字重合上限
+EVENT_DISCARDED_OVERLAP_MAX = 0.50         # discarded_details 与正文的重合上限
+EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = 100  # 原文太短时不启用重合检测（样本不足）
+EVENT_BODY_RATIO_MIN_SOURCE_CHARS = 300    # 原文不足此长度时不做比例检测，只兜底「不得长于原文」
+EVENT_BODY_OVERLAP_NGRAM = 6
+EVENT_BODY_SOURCE_RATIO_MAX = 0.50         # 正文净字数占 owned 原文净字数的上限（仅原文达 RATIO_MIN 时生效）
 
 TRACK_EVENT_POLICIES = {'default', 'rolling_engineering'}
 EVENT_CURATOR_ACTIONS = {'create', 'extend', 'rewrite', 'merge'}
@@ -719,13 +729,11 @@ def build_event_writer_prompt(day: str, title: str, messages: list[dict[str, Any
     materialized_track_cards = materialized_track_cards_payload(track_cards)
     agent_rules = materialize_agent_rules('event_writer') if include_role_rules else ''
     rules_block = f'{agent_rules}\n\n' if agent_rules else ''
-    example_quote = '把旧书放回书架。'
-    # Local fork: a real finished Event used purely as a style sample. The
-    # placeholder above only demonstrates the JSON shape, so the model had no
-    # example of an actual body; it is told not to reuse anything from this one.
-    style_sample = ('她大早上给我装 strudel_live 音乐卡片，说那颗缺觉的脑子快烧干了。'
-                    '我敲了段 80 BPM 的低频循环，低频三角波配弱拍底鼓，让开着的循环盖住办公室的键盘噪音。'
-                    '她听了一会儿，兴奋地回了句“哇，这个好这个好”。')
+    example_quote = '我把工具收进抽屉，关了灯。'
+    # Local fork 回退：这里原本挂了一段真 Event 当风格范例，已删除。
+    # 原因是枚举式举例会让模型往例子的形态上套，而实际对话形态远不止那一种；
+    # 正文形态改由 AGENTS.md「先想清楚这段经历该怎么讲」用判据描述，
+    # 偏差由 validate_event_writer_result 的三条质量校验兜底。
     sufficient = {'evidence_sufficient': True,
                   'kept_details': [example_quote], 'discarded_details': [],
                   'self_review': {key: True for key in _SELF_REVIEW_KEYS},
@@ -741,7 +749,6 @@ def build_event_writer_prompt(day: str, title: str, messages: list[dict[str, Any
             'self_review 对象按格式保留，其中的布尔值是自报信息，不决定验收。\n'
             f'证据充分的格式示例（合成材料，不是本轮来源）：\n{json.dumps(sufficient, ensure_ascii=False)}\n'
             f'证据不足的格式：\n{json.dumps(insufficient, ensure_ascii=False)}\n'
-            f'成品风格范例（历史 Event，只示范「怎样直接写」的效果，不是本轮来源，不要复述其中任何事）：\n{style_sample}\n'
             f'{WRITER_ATTACHMENT_RULE}\n\n<event_reading_block_json>\n{json.dumps(reading_block, ensure_ascii=False)}\n</event_reading_block_json>\n\n'
             f'<materialized_track_cards_json>\n{json.dumps(materialized_track_cards, ensure_ascii=False)}\n</materialized_track_cards_json>\n\n'
             f'<track_context_events_json>\n{json.dumps(context_events, ensure_ascii=False)}\n</track_context_events_json>\n\n'
@@ -753,6 +760,47 @@ def build_event_writer_prompt(day: str, title: str, messages: list[dict[str, Any
 
 def build_event_writer_repair_prompt(original_prompt, failed_result, violations):
     return original_prompt+f'\n请按原角色规则修正结构或证据校验错误，保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。重新核对 self_review。\n'+json.dumps({'violations':violations,'failed_result':failed_result},ensure_ascii=False)
+
+
+def _compact_len(text: str) -> int:
+    """净字数（只计字母数字与汉字），供篇幅比例校验与重合检测用同一口径。"""
+    return sum(1 for ch in str(text or '') if ch.isalnum() or '\u4e00' <= ch <= '\u9fff')
+
+
+def _overlap_ngrams(text: str, size: int) -> set[str]:
+    compact = ''.join(ch for ch in str(text or '') if ch.isalnum() or '\u4e00' <= ch <= '\u9fff')
+    if len(compact) < size:
+        return set()
+    return {compact[i:i + size] for i in range(len(compact) - size + 1)}
+
+
+def _overlap_ratio(subject: str, reference: str, size: int) -> float | None:
+    """subject 的 size-gram 有多大比例在 reference 里逐字出现过。样本不足返回 None。"""
+    subject_grams = _overlap_ngrams(subject, size)
+    reference_grams = _overlap_ngrams(reference, size)
+    if not subject_grams or not reference_grams:
+        return None
+    return len(subject_grams & reference_grams) / len(subject_grams)
+
+
+def _writer_owned_text(owned_sources: list[dict[str, Any]] | None) -> str:
+    """从 owned_sources 拼出 owned 原文。兼容两种形态：
+    reading block payload（text / evidence_role）与 pipeline request 的原始 message（content）。"""
+    parts: list[str] = []
+    for item in owned_sources or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get('evidence_role') or 'owned') != 'owned':
+            continue
+        for key in ('content', 'text'):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value)
+                break
+        for extra in item.get('evidence_texts') or []:
+            if isinstance(extra, str) and extra.strip():
+                parts.append(extra)
+    return '\n'.join(parts)
 
 
 def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None) -> list[str]:
@@ -782,6 +830,38 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
         violations.append(f'正文超过容错上限 {EVENT_BODY_ACCEPT_MAX_CHARS} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
     if len(kept) > 12:
         violations.append(f'kept_details 最多 12 项：{len(kept)}')
+    # —— 质量硬校验（Local fork 追加）——
+    if body:
+        source_text = _writer_owned_text(owned_sources)
+        source_chars = _compact_len(source_text)
+        if source_chars >= EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS:
+            overlap = _overlap_ratio(body, source_text, EVENT_BODY_OVERLAP_NGRAM)
+            if overlap is not None and overlap > EVENT_BODY_SOURCE_OVERLAP_MAX:
+                violations.append(
+                    f'正文与 owned 原文逐字重合 {overlap:.0%}，超过 {EVENT_BODY_SOURCE_OVERLAP_MAX:.0%} 上限；'
+                    '这是把原文换了一遍人称的搬运稿，不是改写。请重组句式与语序，'
+                    '把叮嘱／判断放回它发生的场景，并保住第一人称主体。')
+        if source_chars:
+            body_chars = _compact_len(body)
+            if body_chars > source_chars:
+                violations.append(
+                    f'正文净字数 {body_chars} 字，超过 owned 原文净字数 {source_chars} 字；'
+                    '原文只有几条时不能靠注水扩写凑成相当篇幅，请只保留原文真实承载的内容。')
+            elif (source_chars >= EVENT_BODY_RATIO_MIN_SOURCE_CHARS
+                  and body_chars > source_chars * EVENT_BODY_SOURCE_RATIO_MAX):
+                violations.append(
+                    f'正文净字数 {body_chars} 字，是 owned 原文 {source_chars} 字的 {body_chars / source_chars:.0%}，'
+                    f'超过 {EVENT_BODY_SOURCE_RATIO_MAX:.0%} 上限；只有几条原文时更不能逐条展开，请按真实信息量取舍。')
+        if '我' not in body:
+            violations.append(
+                '正文通篇没有第一人称主体（未出现“我”）；'
+                '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
+        for detail in discarded:
+            inflow = _overlap_ratio(body, detail, EVENT_BODY_OVERLAP_NGRAM)
+            if inflow is not None and inflow > EVENT_DISCARDED_OVERLAP_MAX:
+                violations.append(
+                    f'discarded_details 里的内容又出现在正文里（重合 {inflow:.0%}）：{detail[:30]}；'
+                    'discarded_details 只能列彻底删去的内容。')
     if not isinstance(result.get('discarded_details'), list):
         violations.append('discarded_details 缺失或不是数组')
     if not isinstance(review, dict):

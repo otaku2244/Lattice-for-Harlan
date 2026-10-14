@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArrowCounterClockwise,
+  ArrowsClockwise,
   BookOpenText,
   CalendarBlank,
   CaretRight,
@@ -214,6 +215,36 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
   }));
   const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+
+  const rewrite = async () => {
+    if (item.item_type !== "event") return;
+    if (!window.confirm("让模型按绑定的原文重写这条事件？当前正文会被替换，旧版本仍保留为历史版本。")) return;
+    setRewriting(true);
+    setState("saving");
+    setMessage("正在重写，通常需要 20~90 秒…");
+    try {
+      const response = await fetch("/__serein/memory/rewrite-fact-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.item_id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.item) {
+        const first = Array.isArray(payload.violations) ? payload.violations[0] : "";
+        throw new Error(first ? `未通过校验，未落库：${first}` : payload.message || payload.error || "重写失败");
+      }
+      onRevised(item.item_id, payload.item);
+      setEditing(false);
+      setState("saved");
+      setMessage("已用重写稿替换，旧版本转为历史版本");
+    } catch (error) {
+      setState("error");
+      setMessage(error.message || "重写失败");
+    } finally {
+      setRewriting(false);
+    }
+  };
 
   const save = async () => {
     if (!draft.body.trim() || (item.item_type === "event" && !draft.title.trim())) return;
@@ -234,11 +265,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
       onRevised(item.item_id, payload.item);
       setEditing(false);
       setState("saved");
-      setMessage(
-        payload.status === "superseded" && item.item_type === "event"
-          ? "已保存为新的修订版；请重新审核是否允许自动浮现"
-          : "已保存",
-      );
+      setMessage(payload.status === "superseded" ? "已保存为新的修订版" : "已保存");
     } catch (error) {
       setState("error");
       setMessage(error.message || "保存失败");
@@ -324,8 +351,11 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
             ) : (
               <>
                 {item.item_type==='event'&&<button type="button" aria-pressed={favorite} disabled={!favoriteReady} onClick={toggleFavorite}><Heart size={14} weight={favorite?'fill':'light'}/>{favorite?'已收藏':'收藏'}</button>}
-                <button type="button" onClick={() => setEditing(true)} disabled={state === "saving"}>
-                  <PencilSimple size={14} weight="light" aria-hidden="true" />编辑正文
+                <button type="button" onClick={() => setEditing(true)} disabled={state === "saving" || rewriting}>
+                  <PencilSimple size={14} weight="light" aria-hidden="true" />手动编辑
+                </button>
+                <button type="button" onClick={rewrite} disabled={state === "saving" || rewriting}>
+                  <ArrowsClockwise size={14} weight="light" aria-hidden="true" />{rewriting ? "重写中…" : "重写"}
                 </button>
                 <button type="button" onClick={() => setItemStatus(item.status === "archived" ? "active" : "archived")} disabled={state === "saving"}>
                   {item.status === "archived"

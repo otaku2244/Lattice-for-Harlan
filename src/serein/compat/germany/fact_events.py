@@ -1465,15 +1465,11 @@ class FactEventStore:
         next_importance = current["importance"] if importance is None else importance
         if item_type == "event":
             next_importance = current["importance"]
-        prose_changed = (
-            next_title != str(current.get("title") or "")
-            or next_body != str(current.get("body") or "")
-        )
         next_recallable = recallable
         if recallable is _UNSET:
-            next_recallable = (
-                None if item_type == "event" and prose_changed else current.get("recallable")
-            )
+            # Local fork: 正文改写后沿用原 recallable，不再强制回落到「未审核」，
+            # 免得每次手动改稿都要重新授权自动浮现。
+            next_recallable = current.get("recallable")
         candidate = _normalize_item(
             {
                 "type": item_type,

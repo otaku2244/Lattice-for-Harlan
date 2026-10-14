@@ -961,6 +961,32 @@ function sereinMemoryBridge() {
         }
       });
 
+      server.middlewares.use("/__serein/memory/rewrite-fact-event", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (request.method !== "POST") {
+          response.statusCode = 405;
+          response.end(JSON.stringify({ error: "method_not_allowed" }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          // 模型要跑 20~90 秒，带修复重试可到 3 分钟，必须放宽默认的 30 秒。
+          const upstream = await callSereinDashboard("/api/fact-events/rewrite", {
+            method: "POST",
+            body: { item_id: String(body.itemId || "").trim() },
+            timeoutMs: 300_000,
+          });
+          response.statusCode = upstream.status;
+          response.end(JSON.stringify(upstream.payload));
+        } catch (error) {
+          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.end(JSON.stringify({
+            error: "fact_event_rewrite_failed",
+            message: error?.name === "AbortError" ? "重写超时：模型 5 分钟没有返回，未落库。" : "没有完成这次重写。",
+          }));
+        }
+      });
+
       server.middlewares.use("/__serein/memory/set-fact-event-status", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
