@@ -6,11 +6,13 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from ..core.store import Store, Conflict, encode, digest, now
 from ..deployment import identity, task_model, read_settings
-from .pipeline_limits import blocks, allowed_ids
+from .pipeline_limits import blocks, routing_blocks, settlement_window, allowed_ids
 from ..compat.events import Events, reference_blockers
 from ..compat.germany.fact_events import FactEventStore, FactEventSettlementBlockedError
 from .pipeline_rules import dialogue_units, dialogue_unit_is_complete, normalize_event_track_message_output, flushable_dialogue_units
 from . import pipeline_latest as latest
+from . import event_quality_gate as quality_gate
+from . import pipeline_materials
 from .pipeline_config import snapshot, execution
 from .pipeline_images import (freeze_task_images, persistable_request, hydrate_request_images,
     verify_images, bind_transcriptions,
@@ -26,7 +28,7 @@ EVENT_CURATOR_MAX_ACTIVE_LEAVES_PER_TRACK=8
 _RUNTIME_CONTRACT_FILES = (
     'pipeline.py', 'pipeline_latest.py', 'pipeline_audit.py', 'pipeline_images.py',
     'pipeline_rules.py', 'pipeline_continuity.py', 'pipeline_materials.py',
-    'pipeline_admission.py', 'pipeline_recovery.py',
+    'pipeline_admission.py', 'pipeline_recovery.py', 'pipeline_limits.py', 'pipeline_tracks.py',
 )
 
 
@@ -38,6 +40,38 @@ def runtime_revision():
     rules_root=root.parent/'resources'/'agents'
     role_rules={role:digest((rules_root/role/'AGENTS.md').read_bytes()) for role in ROLES}
     return digest(encode({'contract':CONTRACT,'code':code,'rules':role_rules}))
+
+
+_REVISION_DOWNGRADE_MAX = 5
+
+
+def revision_downgrade_allowed(data):
+    """A changed digest must not strand a frozen batch on its own.
+
+    Every frozen plan is re-proved before use (assert_router_state,
+    assert_downstream_snapshot, _component_signature) and every written body is
+    re-validated, so a stale revision is a hint, not a verdict. Refusing on the
+    digest alone used to freeze the batch and every later batch of its scope
+    until someone retired the plan by hand.
+    """
+    if data.get('contract') != CONTRACT:
+        return False
+    return int(data.get('revision_downgrades') or 0) < _REVISION_DOWNGRADE_MAX
+
+
+def record_revision_downgrade(database, batch, data, current_revision):
+    """Keep the frozen evidence; record that newer code now owns the batch."""
+    if (data.get('revision_downgrade') or {}).get('to') == current_revision:
+        return data, False
+    data = dict(data)
+    data['revision_downgrade'] = {'from': str(data.get('runtime_revision') or ''),
+        'to': current_revision, 'at': datetime.now(timezone.utc).isoformat(),
+        'batch_status': batch['status']}
+    data['revision_downgrades'] = int(data.get('revision_downgrades') or 0) + 1
+    with Store(database) as store, store.transaction(immediate=True):
+        store.conn.execute('UPDATE pipeline_batches SET input_json=? WHERE id=?',
+                           (encode(data), batch['id']))
+    return data, True
 
 
 class PausedBatch(ValueError):
@@ -80,34 +114,18 @@ def initialize(database):
                 SELECT 1 FROM json_each(input_json,'$.routing_messages') m
                 JOIN pipeline_import_boundaries b
                   ON b.upload_id=json_extract(m.value,'$.metadata.import_upload_id') AND b.released=0)""")
-        # A frozen task is reusable only under the exact runtime contract. This
-        # covers routed batches too, so a code/rule upgrade cannot resurrect an
-        # older downstream request through job()'s durable resume path.
-        revision=runtime_revision()
-        store.conn.execute("""UPDATE pipeline_batches SET status='superseded_protocol'
-            WHERE status IN ('pending','needs_repair','routing_only','routed','paused_failure')
+        # A code upgrade is not permission to rebuild frozen work or reset its
+        # failure budget. Retain requests, outputs, provenance and existing holds.
+        for row in store.conn.execute("""SELECT * FROM pipeline_batches
+            WHERE status IN ('pending','routing_only','retry_wait')
               AND (json_extract(input_json,'$.contract') IS NULL
-                   OR json_extract(input_json,'$.contract')<>?
-                   OR json_extract(input_json,'$.runtime_revision') IS NULL
-                   OR json_extract(input_json,'$.runtime_revision')<>?)""",(CONTRACT,revision))
-        # Route caches are executable frozen decisions too. Discard caches whose
-        # producer cannot belong to the current runtime, including completed
-        # batches that may still own a parked tail. Keep batches/jobs/attempts.
-        store.conn.execute("""DELETE FROM pipeline_routes WHERE raw_id IN (
-            SELECT p.raw_id FROM pipeline_route_provenance p
-            JOIN pipeline_batches b ON b.id=p.batch_id
-            WHERE b.status='superseded_import_boundary'
-               OR json_extract(b.input_json,'$.contract') IS NULL
-               OR json_extract(b.input_json,'$.contract')<>?
-               OR json_extract(b.input_json,'$.runtime_revision') IS NULL
-               OR json_extract(b.input_json,'$.runtime_revision')<>?)""",(CONTRACT,revision))
-        store.conn.execute("""DELETE FROM pipeline_route_provenance WHERE batch_id IN (
-            SELECT id FROM pipeline_batches b
-            WHERE b.status='superseded_import_boundary'
-               OR json_extract(b.input_json,'$.contract') IS NULL
-               OR json_extract(b.input_json,'$.contract')<>?
-               OR json_extract(b.input_json,'$.runtime_revision') IS NULL
-               OR json_extract(b.input_json,'$.runtime_revision')<>?)""",(CONTRACT,revision))
+                   OR json_extract(input_json,'$.contract')<>?)""",(CONTRACT,)).fetchall():
+            detail={'status':'needs_repair','batch_id':row['id'],'scope':row['scope'],
+                    'repair_kind':'runtime_contract',
+                    'reason':'Frozen runtime contract changed; explicitly review or rebuild the plan.',
+                    'note':'原文与已完成输出保留；此聊天暂停，其他聊天可继续。'}
+            store.conn.execute("UPDATE pipeline_batches SET status='needs_repair',result_json=? WHERE id=?",
+                               (encode(detail),row['id']))
         compact_completed_snapshots(store)
         expire_completed_media(store)
 
@@ -161,16 +179,34 @@ def rules(role,database):
     with latest.identity_scope(identity(database)):return latest.materialize_agent_rules(role)
 
 
-def new_batch(database,include_recent,clock=None):
+UNFINISHED="'pending','needs_repair','paused_failure','retry_wait','routing_only'"
+SCOPE_HEAD="""NOT EXISTS (SELECT 1 FROM pipeline_batches h WHERE h.scope=b.scope
+    AND h.status IN ("""+UNFINISHED+""") AND
+    (COALESCE(json_extract(h.input_json,'$.queue_order'),h.rowid),h.rowid)<
+    (COALESCE(json_extract(b.input_json,'$.queue_order'),b.rowid),b.rowid))"""
+QUEUE_ORDER="COALESCE(json_extract(b.input_json,'$.queue_order'),b.rowid),b.rowid"
+
+
+def new_batch(database,include_recent,clock=None,*,retry_repair=False):
     policy=read_settings(database)['pipeline']
     current=(clock or datetime.now(timezone.utc)).astimezone(TZ)
     watermark=current if include_recent else current.replace(hour=3,minute=0,second=0,microsecond=0)
     if not include_recent and current<watermark:return None
     cutoff=watermark-timedelta(minutes=20)
     with Store(database) as store,store.transaction(immediate=True):
-        old=store.conn.execute("SELECT * FROM pipeline_batches WHERE status IN ('pending','needs_repair') AND scope NOT IN (SELECT scope FROM pipeline_batches WHERE status='paused_failure') ORDER BY COALESCE(json_extract(input_json,'$.queue_order'),rowid),rowid LIMIT 1").fetchone()
+        held_scopes={row['scope'] for row in store.conn.execute(
+            "SELECT scope FROM pipeline_batches WHERE status IN ('needs_repair','paused_failure','retry_wait','routing_only')")}
+        if retry_repair:
+            old=store.conn.execute("SELECT b.* FROM pipeline_batches b WHERE b.status='needs_repair' AND "+SCOPE_HEAD+" ORDER BY "+QUEUE_ORDER+" LIMIT 1").fetchone()
+            if old:return dict(old)
+        if include_recent:
+            resumed=store.conn.execute("SELECT b.* FROM pipeline_batches b WHERE b.status='routing_only' AND "+SCOPE_HEAD+" ORDER BY "+QUEUE_ORDER+" LIMIT 1").fetchone()
+            if resumed:return dict(resumed)
+        old=store.conn.execute("SELECT b.* FROM pipeline_batches b WHERE b.status='pending' AND "+SCOPE_HEAD+" ORDER BY "+QUEUE_ORDER+" LIMIT 1").fetchone()
         if old:
-            if old['status']=='needs_repair':return dict(old)
+            if store.conn.execute("SELECT 1 FROM pipeline_job_failures f JOIN pipeline_jobs j ON j.id=f.job_id "
+                    "WHERE j.batch_id=? AND j.output_json IS NULL AND f.failures>0",(old['id'],)).fetchone():
+                return dict(old)  # A budget change cannot reset a frozen failure ledger.
             old_data=json.loads(old['input_json'])
             current_limit=policy['max_input_chars']
             frozen_limit=old_data.get('input_policy',{}).get('max_input_chars',current_limit)
@@ -221,12 +257,14 @@ def new_batch(database,include_recent,clock=None):
             complete_upload=" AND (json_extract(r.metadata_json,'$.import_upload_id') IS NULL OR json_extract(r.metadata_json,'$.import_upload_id') IN (SELECT id FROM file_imports WHERE cursor=json_array_length(payload_json,'$.entries')))"
         import_boundary=" AND NOT EXISTS (SELECT 1 FROM pipeline_import_boundaries b WHERE b.upload_id=json_extract(r.metadata_json,'$.import_upload_id') AND b.released=0) AND NOT EXISTS (SELECT 1 FROM pipeline_image_holds h WHERE h.raw_id=r.id AND h.event_hash=r.event_hash)"
         scopes=store.conn.execute('SELECT DISTINCT r.source,r.session_id FROM raw_events r WHERE NOT EXISTS (SELECT 1 FROM raw_processing p WHERE p.raw_id=r.id)'+complete_upload+import_boundary+' ORDER BY r.id').fetchall()
-        held_scopes={row[0] for row in store.conn.execute("SELECT scope FROM pipeline_batches WHERE status='paused_failure'")}
         for source,session in scopes:
             if digest(encode([source,session]))[:20] in held_scopes:continue
             rows=[task_message(row) for row in store.conn.execute('SELECT r.* FROM raw_events r WHERE source=? AND session_id=? AND NOT EXISTS (SELECT 1 FROM raw_processing p WHERE p.raw_id=r.id)'+complete_upload+import_boundary+' ORDER BY r.id',(source,session))]
-            eligible=[r for r in rows if datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))<=watermark]
-            chunks=blocks(eligible,policy['max_input_chars'])
+            # Evaluate the watermark against full envelopes before filtering rows.
+            eligible=[m for unit in dialogue_units(rows)
+                      if max(datetime.fromisoformat(m['created_at'].replace('Z','+00:00')) for m in unit)<=watermark
+                      for m in unit]
+            chunks=routing_blocks(eligible,policy['max_input_chars'])
             for chunk_index,eligible in enumerate(chunks):
                 if chunk_index+1<len(chunks):
                     following=dialogue_units(chunks[chunk_index+1])[0]
@@ -251,10 +289,16 @@ def new_batch(database,include_recent,clock=None):
                 if {item['id'] for item in stable}.intersection(omitted_today):
                     continue
                 with latest.identity_scope(identity(database)):
-                    tracks,ordinal=track_state.load_tracks(store,source,session,eligible[0]['id'],task_message,
-                                                           lookback_days=policy.get('track_lookback_days',3))
-                recent=[task_message(row) for row in store.conn.execute('SELECT * FROM raw_events WHERE source=? AND session_id=? AND id<? ORDER BY id DESC LIMIT 6',(source,session,eligible[0]['id']))][::-1]
-                data={'contract':CONTRACT,'runtime_revision':runtime_revision(),'input_policy':policy,'messages':stable,'parked':parked,'routing_messages':eligible,'tracks':tracks,'next_track_ordinal':ordinal,'scope':scope,'source':source,'recent':recent,'day':watermark.date().isoformat()}
+                    routing_error=None
+                    try:
+                        tracks,ordinal=track_state.load_tracks(store,source,session,eligible[0]['id'],task_message,
+                                                               lookback_days=policy.get('track_lookback_days',3))
+                    except RoutingRecoveryError as error:
+                        tracks=[];ordinal=track_state.next_ordinal(scope,[{'track_id':row[0]} for row in store.conn.execute('SELECT id FROM pipeline_tracks')])
+                        routing_error=str(error)
+                recent=[task_message(row) for row in store.conn.execute('SELECT * FROM raw_events WHERE source=? AND session_id=? AND id<? AND julianday(created_at)<=julianday(?) ORDER BY id DESC LIMIT 6',(source,session,eligible[0]['id'],eligible[0]['created_at']))][::-1]
+                data={'contract':CONTRACT,'runtime_revision':runtime_revision(),'input_policy':policy,'messages':stable,'parked':parked,'routing_messages':eligible,'tracks':tracks,'next_track_ordinal':ordinal,'scope':scope,'source':source,'recent':recent,'day':watermark.date().isoformat(),'settlement_watermark':watermark.isoformat()}
+                if routing_error:data['routing_evidence_error']=routing_error
                 key='pipeline:'+digest(encode(data))
                 existing=store.conn.execute('SELECT status FROM pipeline_batches WHERE id=?',(key,)).fetchone()
                 if existing:continue
@@ -413,7 +457,7 @@ def save_routing_snapshot(database,batch,data,routed):
 
 
 def mark_needs_repair(database,batch,error,*,settlement=False):
-    detail={'status':'needs_repair','batch_id':batch['id'],'reason':str(error),
+    detail={'status':'needs_repair','batch_id':batch['id'],'scope':json.loads(batch['input_json'])['scope'],'reason':str(error),
             'note':('旧 Event 的替换状态或绑定原话已变化，保存被阻止；原话和模型结果保留。请先核对旧 Event；'
                     '无法恢复原计划时，明确作废本批计划并重新归线。' if settlement else
                     '归线材料需要修复；原话和已完成步骤保留。修复后点击“重新校验并继续”。')}
@@ -444,7 +488,7 @@ def _router_prefix(data,request,cursor):
     if not isinstance(messages,list) or not messages or not all(isinstance(m,dict) for m in messages):
         raise RoutingRecoveryError('frozen Router request has no valid message prefix')
     expected=data['routing_messages'][cursor:cursor+len(messages)]
-    keys=('id','source','source_event_id','original_session_id','session_id','role','content')
+    keys=('id','source','source_event_id','original_session_id','session_id','role','content','created_at')
     project=lambda rows:[tuple(m.get(key) for key in keys) for m in rows]
     if project(messages)!=project(expected):
         raise RoutingRecoveryError('frozen Router request disagrees with batch message order/content')
@@ -452,7 +496,36 @@ def _router_prefix(data,request,cursor):
             or not isinstance(request.get('active_tracks'),list)
             or type(request.get('next_track_ordinal')) is not int or request['next_track_ordinal']<1):
         raise RoutingRecoveryError('invalid frozen Router request contract/cards/ordinal')
+    boundaries={0};end=0
+    for unit in dialogue_units(data['routing_messages']):
+        end+=len(unit);boundaries.add(end)
+    if cursor not in boundaries or cursor+len(messages) not in boundaries:
+        raise RoutingRecoveryError('frozen Router frame splits a dialogue unit')
+    proof=request.get('routing_frame')
+    if proof is not None and (proof.get('source_message_ids')!=[m['id'] for m in messages]
+            or proof.get('source_hashes_sha256')!=digest(encode(proof.get('source_hashes',{})))
+            or proof.get('messages_sha256')!=digest(encode(messages))
+            or proof.get('pre_tracks_sha256')!=digest(encode(request['active_tracks']))
+            or proof.get('recent_context_sha256')!=digest(encode(request.get('recent_context')))
+            or proof.get('next_track_ordinal')!=request['next_track_ordinal']
+            or proof.get('watermark')!=settlement_window(messages).isoformat()):
+        raise RoutingRecoveryError('frozen Router frame evidence hash disagrees with its request')
     return messages
+
+
+def router_recent(prior,messages):
+    first=messages[0]
+    limit=datetime.fromisoformat(first['created_at'])
+    return [m for m in prior if m['id']<first['id'] and datetime.fromisoformat(m['created_at'])<=limit][-6:]
+
+
+def assert_router_state(data,request,cards,ordinal,prior):
+    if 'routing_frame' not in request:return  # Legacy accepted jobs have no new proof header.
+    from .pipeline_track_candidates import select
+    recent=router_recent(prior,request['messages'])
+    expected=select(track_state.parked(cards),request['messages'],recent,data.get('input_policy',{}))
+    if request.get('recent_context')!=recent or request['active_tracks']!=expected or request['next_track_ordinal']!=ordinal:
+        raise RoutingRecoveryError('frozen Router pre-Track state disagrees with accepted predecessor frames')
 
 
 async def route_batch(database,batch,data,runner):
@@ -468,6 +541,7 @@ async def route_batch(database,batch,data,runner):
             raise RoutingRecoveryError('invalid frozen Router request JSON: '+row['id']) from error
         if not isinstance(request,dict):raise RoutingRecoveryError('invalid frozen Router request: '+row['id'])
         block=_router_prefix(data,request,cursor)
+        assert_router_state(data,request,cards,ordinal,prior)
         output=await job(database,batch,request,row['role'],runner)
         try:
             routed,updates,ordinal=normalize_event_track_message_output(output,block,request['active_tracks'],
@@ -478,9 +552,11 @@ async def route_batch(database,batch,data,runner):
             cards=track_state.update_cards(cards,routed,updates,block,data['scope'])
         assignments.extend(routed);prior.extend(block);cursor+=len(block)
     max_chars=data.get('input_policy',{}).get('max_input_chars',read_settings(database)['pipeline']['max_input_chars'])
-    for index,block in enumerate(blocks(data['routing_messages'][cursor:],max_chars),len(frozen)):
-        bounded={**data,'routing_messages':block,'tracks':track_state.parked(cards),'next_track_ordinal':ordinal,'recent':prior[-6:]}
+    for index,block in enumerate(routing_blocks(data['routing_messages'][cursor:],max_chars),len(frozen)):
+        bounded={**data,'routing_messages':block,'tracks':track_state.parked(cards),'next_track_ordinal':ordinal,'recent':router_recent(prior,block)}
         prompt_batch={**batch,'input_json':encode(bounded)}
+        with Store(database,read_only=True) as store:
+            track_state.assert_before(store,cards,block[0]['id'])
         request=request_for(database,prompt_batch,'track_router')
         output=await job(database,batch,request,f'track_router:{index}',runner)
         block=_router_prefix(data,request,cursor)
@@ -520,6 +596,13 @@ def candidates(database,track_ids,*,overflow_out=None):
                     originals.append(task_message(raw) if raw else task_message({'id':-int(digest(encode(source_key(ref)))[:12],16),'source':ref['source_system'],'source_event_id':ref['message_id'],'session_id':ref['session_id'],'role':ref['role'],'text':ref['content'],'created_at':ref['created_at']}))
                 detail=store.conn.execute('SELECT details_json FROM pipeline_event_details WHERE event_id=?',(row['item_id'],)).fetchone()
                 details=json.loads(detail[0]) if detail else {}
+                # A source-key-only Event fingerprint cannot establish that its
+                # bound snapshot still agrees with the separately stored raw row.
+                consistent_sources=all(
+                    ref['content']==original['content'] and ref['role']==original['role']
+                    and ref['created_at']==original['created_at']
+                    and ref.get('content_sha256')==digest(original['content'])
+                    for ref,original in zip(refs,originals))
                 blockers=reference_blockers(store.conn,row['item_id'])
                 family=FactEventStore._replacement_family_payload(store.conn,row['item_id']) if blockers else {}
                 family_ids=list(family.get('family_ids') or [])
@@ -529,6 +612,7 @@ def candidates(database,track_ids,*,overflow_out=None):
                 result.append({**dict(row),'event_id':row['item_id'],'primary_track_id':track,'track_id':track,'source_refs':refs,'originals':originals,
                     'source_message_ids':[m['id'] for m in originals],'session_ids':list({m['session_id'] for m in originals}),
                     'source_activity_roles':details.get('source_activity_roles',{}),'blocked':bool(blockers),
+                    'material_snapshot':details.get('material_snapshot') if consistent_sources else None,
                     'protected':bool(blockers),'manual':not str(dict(row).get('origin_id') or '').startswith('assistant_bridge:'),
                     'blocking_reasons':blockers,
                     'continuation_allowed':bool(blockers) and trusted and bool(family.get('ok'))
@@ -589,6 +673,7 @@ def components(database,data,routed,*,include_materials=True):
             'base_event_candidate_overflow':overflow,
             'context_session_ids':list({m['session_id'] for m in context.values()}),
             'writer_material_review':bool(policy.get('material_review_enabled',False)),
+            'material_contract_version':1,
             'writer_round_gate':bool(policy.get('round_gate_enabled',False)),
             'append_protected':bool(policy.get('append_protected_enabled',False)),
         })
@@ -716,9 +801,19 @@ def request_for(database,batch,role,**fields):
         if role=='track_router':
             request.update(messages=data['routing_messages'],active_tracks=track_state.parked(data['tracks']),
                            next_track_ordinal=data.get('next_track_ordinal',track_state.next_ordinal(data['scope'],data['tracks'])))
+            request['recent_context']=router_recent(data['recent'],request['messages'])
             from .pipeline_track_candidates import select
-            request['active_tracks']=select(request['active_tracks'],request['messages'],data['recent'],data.get('input_policy',{}))
-            prompt=latest.build_event_track_message_prompt(data['day'],request['messages'],request['active_tracks'],recent_context_messages=data['recent'],include_role_rules=False)
+            request['active_tracks']=select(request['active_tracks'],request['messages'],request['recent_context'],data.get('input_policy',{}))
+            with Store(database,read_only=True) as store:
+                source_hashes={str(m['id']):row[0] for m in request['messages']
+                    if (row:=store.conn.execute('SELECT event_hash FROM raw_events WHERE id=?',(m['id'],)).fetchone())}
+            request['routing_frame']={'source_message_ids':[m['id'] for m in request['messages']],
+                'source_hashes':source_hashes,'source_hashes_sha256':digest(encode(source_hashes)),'messages_sha256':digest(encode(request['messages'])),
+                'pre_tracks_sha256':digest(encode(request['active_tracks'])),
+                'recent_context_sha256':digest(encode(request['recent_context'])),
+                'next_track_ordinal':request['next_track_ordinal'],
+                'watermark':settlement_window(request['messages']).isoformat()}
+            prompt=latest.build_event_track_message_prompt(data['day'],request['messages'],request['active_tracks'],recent_context_messages=request['recent_context'],include_role_rules=False)
         elif role=='event_curator':
             component=fields['component']
             image_messages=image_source_messages(database,component['context_messages'])
@@ -758,9 +853,17 @@ def request_for(database,batch,role,**fields):
                 prompt+='\n必须逐张转录图片里的可见原文，标题、正文、评论按区块保留；在同一 text 中用 [画面] 简述可见人物、物件、布局和关系，用 [文字] 放逐字转录。没有文字也保留画面描述；不猜身份、动机或前后经过，看不清标 unreadable。Writer 只读转录，不接收原图。最终 JSON 额外包含 image_transcriptions 数组，每图恰好一项：'+encode({'input_image':1,'text':'可见原文与画面描述','unreadable':False})
         else:
             event=dict(fields['event']);component=fields['component']
-            if event['action']=='extend':event['append_only']=True
-            request['event']=event
             selected_bases=[base for base in component['base_event_candidates'] if base['event_id'] in event['base_event_ids']]
+            demote_reason=''
+            if event['action']=='extend':
+                event['append_only']=True
+                demote_reason=(quality_gate.append_demote_reason(selected_bases[0],component['context_messages'])
+                               if len(selected_bases)==1 and isinstance(selected_bases[0].get('body'),str) else '')
+                if demote_reason:
+                    event['action']='rewrite';event.pop('append_only',None);event['append_demoted_reason']=demote_reason
+            request['event']=event
+            if demote_reason:
+                request['append_demoted_title']=str(selected_bases[0].get('title') or '')
             append_only=bool(event.get('append_only'))
             inherited={key for base in component['base_event_candidates'] for key in base['source_message_ids']}
             current={m['id'] for m in component['messages']} - inherited
@@ -780,7 +883,7 @@ def request_for(database,batch,role,**fields):
             request['messages']=messages
             request['writer_previous_body_only']=3
             request['writer_mode']='append' if append_only else 'rewrite' if full_rewrite else 'create'
-            prompt=latest.build_event_writer_prompt(data['day'],'',messages,context_messages=reading,
+            prompt=latest.build_event_writer_prompt(data['day'],request.get('append_demoted_title') or '',messages,context_messages=reading,
                 track_cards=component['track_cards'],source_activity_roles={int(b['source_message_id']):b['activity_role'] for b in event['source_bindings']},
                 previous_events=[] if append_only else selected_bases, include_role_rules=False,
                 track_context_events=([*component['base_event_candidates'],*selected_bases]
@@ -794,6 +897,10 @@ def request_for(database,batch,role,**fields):
                 request['append_remaining_chars']=remaining
                 prompt+='\n只写新 owned 原文构成的后续段落，不复述或重写旧经历；旧正文由程序原样保留并追加，不重写旧标题或召回设置。\n'
                 prompt+=f'整篇 Event 总计不得超过 1500 字符（含拼接的两个换行）；本次新增段落最多 {remaining} 字符。写清就停，不截断旧正文。\n'
+            if demote_reason:
+                prompt+=('\n本轮是整篇重写（原定追加，因旧正文已过长或构成高重合搬运稿而改为重写）。'
+                         f'本次降级依据：{demote_reason}。标题必须与事件提示完全一致，不得改写标题；'
+                         '正文按绑定原文重新组织，旧正文只当背景，其中的错误、重复或冗余一律不得沿用。\n')
             owned={m['id'] for m in messages};allowed={m['id'] for m in reading}
             bound_images=[{**item,'evidence_role':'owned' if item['source_message_id'] in owned else 'context_only'} for item in component.get('images',[]) if item['source_message_id'] in allowed]
             unavailable={(i['source_message_id'],i['position'],i['sha256']) for i in component.get('unavailable_images',[])}
@@ -886,6 +993,8 @@ def validate(request,output):
                     transcriptions.setdefault(item['source_message_id'],[]).append(str(item.get('text') or ''))
             owned=[{**item,'evidence_texts':transcriptions.get(item.get('id'),[])}
                    for item in request.get('messages') or []]
+            if request.get('append_demoted_title') and isinstance(output,dict):
+                output['title']=request['append_demoted_title']
             errors=latest.validate_event_writer_result(output,owned)
             if errors:raise ValueError('; '.join(errors))
 
@@ -913,7 +1022,25 @@ def curator_repair_prompt(request, output, error):
     return request['prompt']+'\n漏项修复：保留上一份结果中已有的有效归属和处置，对照完整上下文补全遗漏。必要时修正关联的边界和回执；不得为通过校验一律 skip/defer，不得猜测归属。返回修复后的完整 JSON，程序会重新检查全部来源、重复归属和冲突。\n'+encode({
         'missing_source_message_ids':error.missing_source_ids,
         'missing_messages':messages,
-        'previous_output':output})
+        'previous_output':output, **curator_material_repair_scope(request, output)})
+
+
+def curator_material_repair_scope(request, output):
+    """Host-owned annotation IDs; malformed ownership is repaired separately."""
+    component=request.get('component') or {}
+    if (request.get('role')!='event_curator' or not component.get('writer_material_review')
+            or not isinstance(output,dict)):
+        return {}
+    try:
+        expanded=decision(output)
+        expanded={key:value for key,value in expanded.items() if key!='decision_review'}
+        if 'skip_unit_roots' in expanded:
+            expanded=latest._expand_compact_event_curator_output(expanded,component)
+        contracts=pipeline_materials.material_contracts(expanded,component)
+        return {'material_annotation_source_ids_by_event':{
+            str(index):contract['annotation_source_message_ids'] for index,contract in contracts.items()}}
+    except (ValueError,KeyError,TypeError,IndexError):
+        return {}
 
 
 def accept_curator_omission(database,job_id,error):
@@ -960,6 +1087,11 @@ def _submit(database,job_id,output):
         latest.canonicalize_claim_group_ids(output)
     encoded_output=encode(output)
     if status.startswith('superseded_'):raise ValueError('任务输入已更新，请重新领取任务；原话和已完成的归线仍保留')
+    if request.get('contract')!=CONTRACT:
+        # A request frozen a moment ago is still submittable after a code change:
+        # the model already produced this output and validate() re-checks it.
+        # Only a contract move is fatal, because the payload shape itself moved.
+        raise ValueError('Frozen runtime contract changed; explicitly rebuild the plan.')
     if existing_output:
         if existing_output!=encoded_output:raise Conflict('This job already has a different result')
         return {'status':'unchanged','job_id':job_id}
@@ -994,16 +1126,20 @@ def stage_failures(database,job_id):
 
 
 def fail_stage(database,batch,job_id,error):
-    # Daytime route-only work is not a frozen settlement batch.
-    if batch['id'].startswith('route:'):return
     from ..work_tasks import failure_reason
     reason=failure_reason(error)
     with Store(database) as store,store.transaction(immediate=True):
         store.conn.execute("INSERT INTO pipeline_job_failures VALUES (?,1,?) ON CONFLICT(job_id) DO UPDATE SET failures=failures+1,error=excluded.error",(job_id,reason))
         count=store.conn.execute('SELECT failures FROM pipeline_job_failures WHERE job_id=?',(job_id,)).fetchone()[0]
         if count>=3:
-            result={'status':'paused','batch_id':batch['id'],'job_id':job_id,'reason':reason,'failures':count}
+            result={'status':'paused','batch_id':batch['id'],'scope':json.loads(batch['input_json'])['scope'],'job_id':job_id,'reason':reason,'failures':count}
             store.conn.execute("UPDATE pipeline_batches SET status='paused_failure',result_json=? WHERE id=?",(encode(result),batch['id']))
+        elif batch['id'].startswith('route:'):
+            retry_at=(datetime.now(timezone.utc)+timedelta(minutes=5*count)).isoformat()
+            result={'status':'retry_wait','batch_id':batch['id'],'scope':json.loads(batch['input_json'])['scope'],
+                    'job_id':job_id,'reason':reason,'failures':count,'next_retry_at':retry_at}
+            store.conn.execute("UPDATE pipeline_batches SET status='retry_wait',result_json=? WHERE id=?",
+                               (encode(result),batch['id']))
     if count>=3:raise PausedBatch(reason) from error
 
 
@@ -1019,7 +1155,8 @@ def retry_batch(database,batch_id):
                                (job['id'],number,now(),'','curator_omission_retry_reset'))
             store.conn.execute('UPDATE pipeline_jobs SET output_json=NULL WHERE id=?',(job['id'],))
         store.conn.execute('DELETE FROM pipeline_job_failures WHERE job_id IN (SELECT id FROM pipeline_jobs WHERE batch_id=? AND output_json IS NULL)',(batch_id,))
-        store.conn.execute("UPDATE pipeline_batches SET status='pending',result_json=NULL WHERE id=?",(batch_id,))
+        store.conn.execute("UPDATE pipeline_batches SET status=?,result_json=NULL WHERE id=?",
+                           ('routing_only' if batch_id.startswith('route:') else 'pending',batch_id))
     return {'status':'resumed','batch_id':batch_id}
 
 
@@ -1101,7 +1238,7 @@ async def job(database,batch,request,key,runner):
         for attempt in range(attempts):
             progress(attempt=attempt+1,stage=request['role'],
                      prompt_chars=len(prompt)+len(request['rules']))
-            raw='';received=False
+            raw='';received=False;output={}
             try:
                 content=([{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':item['url']}} for item in request.get('images',[])]) if request.get('images') else prompt
                 response=await asyncio.wait_for(complete({**model,'request_timeout_seconds':policy['timeout_seconds']},
@@ -1142,7 +1279,7 @@ async def job(database,batch,request,key,runner):
                 elif image:record_image_failure(database,image,error)
                 else:fail_stage(database,batch,identifier,error)
                 if (not image and (not received or not isinstance(error,ValueError))) or attempt==attempts-1:raise
-                correction='\n请按原角色规则修正结构或证据校验错误，只返回完整 JSON。保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。若违规是正文与 owned 原文逐字重合过高，请重组句式与语序、把叮嘱与判断放回发生的场景，不得只换人称；若违规是正文没有第一人称主体，请用已在原文里表达过的判断、感受或想象做视角锚点，不得新编原文没有的动作或心理。若违规是正文超过篇幅上限或篇幅超过 owned 原文，请按原文真实承载的信息量重新取舍，删掉重复意思、评价性复述与收尾语，不得靠注水或扩写凑篇幅。重新核对 self_review。编号使用原始编号，不得按展示位置重新编号。\n'+encode({'validation_error':reason,'allowed_ids':allowed_ids(request)})
+                correction='\n请按原角色规则修正结构或证据校验错误，只返回完整 JSON。保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。若违规是正文与 owned 原文逐字重合过高，请重组句式与语序、把叮嘱与判断放回发生的场景，不得只换人称；若违规是正文没有第一人称主体，请用已在原文里表达过的判断、感受或想象做视角锚点，不得新编原文没有的动作或心理。若违规是正文超过篇幅上限或篇幅超过 owned 原文，请按原文真实承载的信息量重新取舍，删掉重复意思、评价性复述与收尾语，不得靠注水或扩写凑篇幅。重新核对 self_review。编号使用原始编号，不得按展示位置重新编号。\n'+('materials 必须只覆盖 host 指定的 material_annotation_source_ids_by_event；继承标注只读，不重复输出。\n' if request['role']=='event_curator' and request.get('component',{}).get('writer_material_review') else '')+encode({'validation_error':reason,'allowed_ids':allowed_ids(request), **curator_material_repair_scope(request,output)})
                 room=policy['max_prompt_chars']-len(request['rules'])-len(request['prompt'])-len(correction)-80
                 if room<0:raise ValueError('提示词上限不足以容纳纠错请求，请减小每批输入。') from error
                 prompt=request['prompt']+correction+'\n上一份不合格输出（仅用于纠错，可能截断）：\n'+raw[:min(room,10000)]
@@ -1251,6 +1388,7 @@ def settle(database,batch,data,routed,plans):
                     'source_keys':[dict(zip(('source_system','session_id','message_id'),source_key(ref))) for ref in b['source_refs']]} for b in bases])
             if append_only:item['append_only']=True
             items.append(item);details.append({'track_id':event['primary_track_id'],'writer':written,
+                'material_snapshot':pipeline_materials.snapshot_for(event,component['context_messages']),
                 'curator_decision_review':plan.get('decision_review'),
                 'curator_image_transcriptions':written.get('curator_image_transcriptions',[]),
                 'source_activity_roles':{str(b['source_message_id']):b['activity_role'] for b in event['source_bindings']}})
@@ -1281,9 +1419,12 @@ def settle(database,batch,data,routed,plans):
     encoded_result=encode(result)
     def finish(conn):
         from .pipeline_recovery import record_routes
-        record_routes(conn,batch['id'],assignments)
+        record_routes(conn,batch['id'],assignments,preserve_existing=bool(routed.get('recovered_route_sources')))
         for item,detail in zip(items,details):
             key=conn.execute('SELECT item_id FROM fact_events WHERE origin_id=?',(item['origin_id'],)).fetchone()[0]
+            if detail.get('material_snapshot') is not None:
+                fingerprint=conn.execute('SELECT fingerprint FROM fact_events WHERE item_id=?',(key,)).fetchone()[0]
+                detail['material_snapshot'].update(event_id=key,event_fingerprint=fingerprint)
             conn.execute('INSERT OR IGNORE INTO pipeline_track_events VALUES (?,?)',(detail['track_id'],key))
             conn.execute('INSERT OR REPLACE INTO pipeline_event_details VALUES (?,?)',(key,encode(detail)))
             if arc_linking_enabled:
@@ -1305,7 +1446,21 @@ def settle(database,batch,data,routed,plans):
 
 async def advance(database,*,include_recent=False,runner=None,retry_repair=False):
     from ..work_tasks import execute
-    return await execute(database,'pipeline',lambda:_advance(database,include_recent=include_recent,runner=runner,retry_repair=retry_repair))
+    result=await execute(database,'pipeline',lambda:_advance(database,include_recent=include_recent,runner=runner,retry_repair=retry_repair))
+    if not retry_repair or not isinstance(result,dict):
+        return result
+    if result.get('status')!='needs_repair' or not result.get('auto_rebuild_ready'):
+        return result
+    batch_id=result.get('batch_id')
+    if not batch_id:
+        return result
+    # The plan already had one honest attempt under this code. Retire it now
+    # instead of asking the user to find the rebuild action themselves.
+    try:
+        from .pipeline_recovery import rebuild
+        return await rebuild(database,batch_id,'REBUILD_PIPELINE_BATCH')
+    except Exception:
+        return result
 
 
 async def _advance(database,*,include_recent=False,runner=None,retry_repair=False):
@@ -1433,12 +1588,31 @@ async def first_event_writer_pass(database,batch,component,plan,index,runner):
 
 async def _advance_frozen(database,*,include_recent=False,runner=None,retry_repair=False):
     initialize(database)
-    batch=new_batch(database,include_recent)
-    if not batch:return {'status':'current','note':'No stable dialogue units are ready.'}
+    batch=new_batch(database,include_recent,retry_repair=retry_repair)
+    if not batch:return held_result(database) or {'status':'current','note':'No stable dialogue units are ready.'}
     data=json.loads(batch['input_json']);plans=[]
-    if batch['status']=='needs_repair' and not retry_repair:
-        return json.loads(batch['result_json'])
+    current_revision=runtime_revision();downgraded_now=False
+    if data.get('runtime_revision')!=current_revision:
+        if not revision_downgrade_allowed(data):
+            return json.loads(batch['result_json'])
+        already_ran=(data.get('revision_downgrade') or {}).get('to')==current_revision
+        if already_ran and batch['status']=='needs_repair':
+            # This plan already ran under the current code and still could not
+            # be proved. A second identical pass would only burn models, so the
+            # decision goes back to the explicit retry path below.
+            detail=json.loads(batch['result_json'] or '{}')
+            if retry_repair:detail['auto_rebuild_ready']=True
+            return detail
+        data,downgraded_now=record_revision_downgrade(database,batch,data,current_revision)
     try:
+        if batch['id'].startswith('route:'):
+            frozen=router_jobs(database,batch)
+            if batch['status']=='needs_repair' and (data.get('routing_evidence_error') or not frozen
+                    or any(row['output_json'] is None for row in frozen)
+                    or sum(len(json.loads(row['request_json'])['messages']) for row in frozen)!=len(data['routing_messages'])):
+                raise RoutingRecoveryError('Frozen route evidence remains incomplete; explicitly rebuild to reroute.')
+            await _publish_routes(database,batch,data,runner)
+            return {'status':'routed','batch_id':batch['id'],'scope':data['scope']}
         from .pipeline_recovery import assert_downstream_snapshot
         assert_downstream_snapshot(database,batch,data)
         routed=data.get('routing_result')
@@ -1448,6 +1622,8 @@ async def _advance_frozen(database,*,include_recent=False,runner=None,retry_repa
             else:
                 routed=None if data.get('ignore_route_cache') else cached_route_result(database,data)
                 if routed is None:
+                    if data.get('routing_evidence_error'):
+                        raise RoutingRecoveryError(data['routing_evidence_error'])
                     if 'components' in data:
                         raise RoutingRecoveryError('no complete route proof for frozen downstream plan; rebuild explicitly')
                     routed=await route_batch(database,batch,data,runner)
@@ -1535,7 +1711,10 @@ async def _advance_frozen(database,*,include_recent=False,runner=None,retry_repa
         with Store(database,read_only=True) as store:
             return json.loads(store.conn.execute('SELECT result_json FROM pipeline_batches WHERE id=?',(batch['id'],)).fetchone()[0])
     except AwaitAgent as wait:return wait.task
-    except RoutingRecoveryError as error:return mark_needs_repair(database,batch,error)
+    except RoutingRecoveryError as error:
+        detail=mark_needs_repair(database,batch,error)
+        if downgraded_now:detail['revision_downgraded']=True
+        return detail
     except FactEventSettlementBlockedError as error:return mark_needs_repair(database,batch,error,settlement=True)
 
 
@@ -1556,42 +1735,105 @@ async def flush_routes(database):
     with execution(database):return await _flush_routes_frozen(database)
 
 
+def scope_holds(database):
+    with Store(database,read_only=True) as store:
+        return [{**json.loads(row['result_json'] or '{}'),'batch_id':row['id'],
+                 'scope':row['scope'],'hold_status':row['status']}
+                for row in store.conn.execute("SELECT * FROM pipeline_batches WHERE status IN "
+                    "('needs_repair','paused_failure','retry_wait','routing_only') ORDER BY rowid")]
+
+
+def held_result(database):
+    holds=scope_holds(database)
+    if not holds:return None
+    # Keep the actionable repair result compatible with existing manual clients.
+    if len(holds)==1 and holds[0].get('status')=='needs_repair':
+        return {**holds[0],'blocked_scopes':holds}
+    return {'status':'blocked','blocked_scopes':holds,
+            'note':'部分聊天等待修复或重试；未结算原文保留，其他聊天可继续。'}
+
+
+async def _publish_routes(database,batch,data,runner=None):
+    output=await route_batch(database,batch,data,runner)
+    assignments,updates,_=route_result(data,output)
+    with Store(database) as store,store.transaction(immediate=True):
+        validate_routing_result(data,output)
+        data['routing_result']=output
+        track_state.persist(store.conn,output['track_state_updates'],data['scope'],preserve_newer=True)
+        from .pipeline_recovery import record_routes
+        record_routes(store.conn,batch['id'],assignments)
+        store.conn.execute("UPDATE pipeline_batches SET status='routed',input_json=?,result_json=NULL WHERE id=?",
+                           (encode(data),batch['id']))
+
+
 async def _flush_routes_frozen(database):
-    """Daytime routing: five completed envelopes and twenty-minute silence; no Events."""
+    """Daytime routing uses durable jobs, complete units and settlement windows."""
     config=snapshot(database,'routing')
     if config['policy']['execution_mode']=='agent' or not config['models']['track_router']:return
     initialize(database)
+    current=datetime.now(timezone.utc)
     with Store(database,read_only=True) as store:
+        held={row['scope'] for row in store.conn.execute("SELECT scope FROM pipeline_batches WHERE status IN "
+              "('pending','needs_repair','paused_failure','retry_wait','routing_only')")}
+        frozen=[dict(row) for row in store.conn.execute("SELECT b.* FROM pipeline_batches b WHERE "
+                "b.id LIKE 'route:%' AND b.status IN ('routing_only','retry_wait') AND "+SCOPE_HEAD+" ORDER BY "+QUEUE_ORDER)]
         upload=''
         if store.conn.execute("SELECT 1 FROM sqlite_master WHERE name='file_imports'").fetchone():
             upload=" AND (json_extract(r.metadata_json,'$.import_upload_id') IS NULL OR json_extract(r.metadata_json,'$.import_upload_id') IN (SELECT id FROM file_imports WHERE cursor=json_array_length(payload_json,'$.entries')))"
         import_boundary=" AND NOT EXISTS (SELECT 1 FROM pipeline_import_boundaries b WHERE b.upload_id=json_extract(r.metadata_json,'$.import_upload_id') AND b.released=0) AND NOT EXISTS (SELECT 1 FROM pipeline_image_holds h WHERE h.raw_id=r.id AND h.event_hash=r.event_hash)"
-        rows=[task_message(r) for r in store.conn.execute("SELECT r.* FROM raw_events r WHERE NOT EXISTS (SELECT 1 FROM pipeline_routes p WHERE p.raw_id=r.id) AND NOT EXISTS (SELECT 1 FROM raw_processing p WHERE p.raw_id=r.id)"+upload+import_boundary+' ORDER BY r.id')]
+        # Read cached rows too, so filtering never invents a different unit start.
+        rows=[task_message(r) for r in store.conn.execute("SELECT r.* FROM raw_events r WHERE NOT EXISTS (SELECT 1 FROM raw_processing p WHERE p.raw_id=r.id)"+upload+import_boundary+' ORDER BY r.id')]
+        cached={row[0] for row in store.conn.execute('SELECT raw_id FROM pipeline_routes UNION SELECT raw_id FROM pipeline_route_provenance')}
+    for batch in frozen:
+        detail=json.loads(batch['result_json'] or '{}')
+        if batch['status']=='retry_wait' and current<datetime.fromisoformat(detail['next_retry_at']):continue
+        try:await _publish_routes(database,batch,json.loads(batch['input_json']))
+        except RoutingRecoveryError as error:mark_needs_repair(database,batch,error)
+        except (PausedBatch,AwaitAgent):pass
+        except Exception as error:
+            with Store(database,read_only=True) as store:
+                state=store.conn.execute('SELECT status FROM pipeline_batches WHERE id=?',(batch['id'],)).fetchone()[0]
+            if state=='routing_only':mark_needs_repair(database,batch,error)
     sessions={}
     for row in rows:sessions.setdefault((row['source'],row['original_session_id']),[]).append(row)
-    current=datetime.now(timezone.utc)
     for (source,session),messages in sessions.items():
+        scope=digest(encode([source,session]))[:20]
+        if scope in held:continue
         units=flushable_dialogue_units(messages,now=current)
         if len(units)<5:continue
-        messages=[row for unit in units for row in unit];scope=digest(encode([source,session]))[:20]
+        # Only skip wholly cached units. Partial cache is visible repair evidence,
+        # never permission to reroute a suffix using a made-up envelope boundary.
+        partial=any(any(m['id'] in cached for m in u) and not all(m['id'] in cached for m in u) for u in units)
+        units=[u for u in units if not all(m['id'] in cached for m in u)]
+        if not units:continue
+        messages=[row for unit in units for row in unit]
         with Store(database) as store:
             with latest.identity_scope(identity(database)):
-                tracks,ordinal=track_state.load_tracks(store,source,session,messages[0]['id'],task_message,
-                                                       lookback_days=config['policy'].get('track_lookback_days',3))
-            recent=[task_message(r) for r in store.conn.execute('SELECT * FROM raw_events WHERE source=? AND session_id=? AND id<? ORDER BY id DESC LIMIT 6',(source,session,messages[0]['id']))][::-1]
+                routing_error=None
+                try:
+                    tracks,ordinal=track_state.load_tracks(store,source,session,messages[0]['id'],task_message,
+                                                           lookback_days=config['policy'].get('track_lookback_days',3))
+                except RoutingRecoveryError as error:
+                    tracks=[];ordinal=track_state.next_ordinal(scope,[{'track_id':row[0]} for row in store.conn.execute('SELECT id FROM pipeline_tracks')])
+                    routing_error=str(error)
+            recent=[task_message(r) for r in store.conn.execute('SELECT * FROM raw_events WHERE source=? AND session_id=? AND id<? AND julianday(created_at)<=julianday(?) ORDER BY id DESC LIMIT 6',(source,session,messages[0]['id'],messages[0]['created_at']))][::-1]
             data={'contract':CONTRACT,'runtime_revision':runtime_revision(),'input_policy':config['policy'],'routing_messages':messages,'tracks':tracks,'next_track_ordinal':ordinal,'scope':scope,'recent':recent,'day':current.astimezone(TZ).date().isoformat()}
-            key='route:'+digest(encode(data));batch={'id':key,'input_json':encode(data)}
+            if routing_error:data['routing_evidence_error']=routing_error
+            key='route:'+digest(encode(data));batch={'id':key,'scope':scope,'input_json':encode(data)}
             store.conn.execute("INSERT OR IGNORE INTO pipeline_batches(id,scope,input_json,status) VALUES (?,?,?,'routing_only')",(key,scope,batch['input_json']))
-        output=await route_batch(database,batch,data,None)
-        assignments,updates,_=route_result(data,output)
-        with Store(database) as store,store.transaction(immediate=True):
-            # Publish the producer's frozen interpretation and route provenance atomically.
-            validate_routing_result(data,output)
-            data['routing_result']=output
-            track_state.persist(store.conn,output['track_state_updates'],scope,preserve_newer=True)
-            from .pipeline_recovery import record_routes
-            record_routes(store.conn,key,assignments)
-            store.conn.execute("UPDATE pipeline_batches SET status='routed',input_json=? WHERE id=?",(encode(data),key))
+        if routing_error:
+            mark_needs_repair(database,batch,RoutingRecoveryError(routing_error))
+            continue
+        if partial:
+            mark_needs_repair(database,batch,RoutingRecoveryError('Partially cached dialogue unit; review the complete frozen envelope.'))
+            continue
+        try:await _publish_routes(database,batch,data)
+        except RoutingRecoveryError as error:mark_needs_repair(database,batch,error)
+        except (PausedBatch,AwaitAgent):pass
+        except Exception as error:
+            with Store(database,read_only=True) as store:
+                state=store.conn.execute('SELECT status FROM pipeline_batches WHERE id=?',(batch['id'],)).fetchone()[0]
+            if state=='routing_only':mark_needs_repair(database,batch,error)
 
 
 async def scheduled_advance(database):
@@ -1610,8 +1852,11 @@ async def _scheduled_advance(database):
     if current.hour<3:return {'status':'waiting_settlement_window'}
     with Store(database,read_only=True) as store:
         row=store.conn.execute('SELECT completed FROM pipeline_schedule WHERE day=?',(day,)).fetchone()
-    if row and row[0]:return {'status':'settled_today'}
+    held=held_result(database)
+    if row and row[0] and not held:return {'status':'settled_today'}
+    if held:
+        with Store(database) as store:store.conn.execute('INSERT OR REPLACE INTO pipeline_schedule VALUES (?,0)',(day,))
     result=await _advance(database)
-    if result['status']=='current':
+    if result['status']=='current' and not held_result(database):
         with Store(database) as store:store.conn.execute('INSERT OR REPLACE INTO pipeline_schedule VALUES (?,1)',(day,))
     return result

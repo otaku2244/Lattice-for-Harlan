@@ -20,6 +20,7 @@ from typing import Any
 from .. import deployment
 from ..model_runtime import complete
 from . import pipeline_latest as L
+from . import event_quality_gate as G
 
 EVENT_REWRITE_ATTEMPTS = 3
 EVENT_REWRITE_TIMEOUT_SECONDS = 300
@@ -45,7 +46,7 @@ def _length_budget_prompt(prompt: str, result: dict[str, Any],
     60%~90%。这里按 owned 原文净字数直接算出上限：原文达 RATIO_MIN（300 字）
     时取一半，不足时只要求不长于原文（与生产校验口径一致）。
     """
-    source_chars = L._compact_len(L._writer_owned_text(owned_payload))
+    source_chars = G._compact_len(G._writer_owned_text(owned_payload))
     if not source_chars:
         return None
     if source_chars >= L.EVENT_BODY_RATIO_MIN_SOURCE_CHARS:
@@ -53,7 +54,7 @@ def _length_budget_prompt(prompt: str, result: dict[str, Any],
     else:
         budget = source_chars
     budget = min(L.EVENT_BODY_ACCEPT_MAX_CHARS, max(60, budget))
-    current = L._compact_len(str(result.get('event_draft') or ''))
+    current = G._compact_len(str(result.get('event_draft') or ''))
     return prompt + (
         '\n篇幅硬预算：正文净字数硬性压到 %d 字以内（上一版 %d 字，owned 原文净字数 %d 字）。'
         '只留信息点本身，删掉全部解释、铺垫、复述、推导与评价；不得新增原文没有的内容；'
@@ -112,7 +113,7 @@ def load_event_writer_inputs(database: str, item_id: str) -> dict[str, Any]:
                 'select id, role, text, created_at from raw_events'
                 ' where id between ? and ? and session_id in (select session_id from raw_events where id=?)'
                 ' order by id desc',
-                (min(owned_ids) - _CONTEXT_WINDOW, max(owned_ids) + _CONTEXT_WINDOW, max(owned_ids))).fetchall()
+                (min(owned_ids) - _CONTEXT_WINDOW, max(owned_ids), max(owned_ids))).fetchall()
             chars = 0
             for row in neighbours:
                 if int(row['id']) in owned_ids:

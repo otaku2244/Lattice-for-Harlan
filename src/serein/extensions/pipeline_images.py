@@ -286,7 +286,9 @@ def _strip_task_media(value,key=''):
 def compact_batch_snapshot(data):
     """Keep the exact Router proof while dropping completed downstream material."""
     keys=('contract','runtime_revision','scope','source','day','routing_messages','routing_result',
-          'last_routing_repair','rebuild_of')
+          'tracks','recent','next_track_ordinal','input_policy',
+          'last_routing_repair','rebuild_of','recovery_downgrade',
+          'revision_downgrade','revision_downgrades')
     compact={key:data[key] for key in keys if key in data}
     compact['task_snapshot_compacted']=True
     return _strip_task_media(compact)
