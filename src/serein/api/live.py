@@ -105,7 +105,14 @@ def routes(settings, services, auth):
 
     @router.post('/api/fact-events/revise')
     def revise(body: dict):
-        return written(events.revise(body.get('item_id',''),**{k:v for k,v in body.items() if k in ('title','body','importance','recallable')}))
+        return written(events.revise(body.get('item_id',''),**{k:v for k,v in body.items() if k in ('title','body','importance','recallable','source_keys')}))
+
+    @router.post('/api/fact-events/source-candidates')
+    def source_candidates(body: dict):
+        """Local fork: 人工改绑原文时，只允许在当前已绑定原文的前后文里挑选。"""
+        return events.source_candidates(body.get('item_id',''),
+            query=body.get('query',''),before_id=body.get('before_id',0),
+            after_id=body.get('after_id',0),limit=body.get('limit',80))
 
     @router.post('/api/fact-events/rewrite')
     async def rewrite(body: dict):

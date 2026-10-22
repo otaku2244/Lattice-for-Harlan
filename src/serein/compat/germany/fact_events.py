@@ -1450,8 +1450,15 @@ class FactEventStore:
         body: Any = None,
         importance: Any = None,
         recallable: Any = _UNSET,
+        source_keys: Any = None,
     ) -> dict[str, Any]:
-        """Revise prose by superseding the item; update Event recallability as metadata."""
+        """Revise prose by superseding the item; update Event recallability as metadata.
+
+        ``source_keys`` (local fork) lets a human add or drop raw evidence in the
+        same revision. Each key is ``(source_system, session_id, message_id)``;
+        already-bound keys are reused verbatim, new ones are re-read from
+        ``raw_events`` so the client never supplies evidence content.
+        """
 
         current = self.read(item_id, include_sources=True)
         if current is None:
@@ -1460,6 +1467,9 @@ class FactEventStore:
             raise ValueError("only active or archived items may be revised")
 
         item_type = str(current["item_type"])
+        source_refs = current["source_refs"]
+        if source_keys is not None:
+            source_refs = self._resolve_source_keys(source_keys, source_refs)
         next_title = str(current["title"] if title is None else title).strip()
         next_body = str(current["body"] if body is None else body).strip()
         next_importance = current["importance"] if importance is None else importance
@@ -1480,7 +1490,7 @@ class FactEventStore:
                 "fact_type": current.get("fact_type", ""),
                 "atomic_question": current.get("atomic_question", ""),
                 "supersedes_item_id": str(current["item_id"]),
-                "source_refs": current["source_refs"],
+                "source_refs": source_refs,
             }
         )
 
@@ -1518,7 +1528,7 @@ class FactEventStore:
                     "fact_type": current.get("fact_type", ""),
                     "atomic_question": current.get("atomic_question", ""),
                     "supersedes_item_id": str(current["item_id"]),
-                    "source_refs": current["source_refs"],
+                    "source_refs": source_refs,
                 }
             ]
         )
@@ -1530,6 +1540,234 @@ class FactEventStore:
             "status": "superseded",
             "previous_item_id": str(current["item_id"]),
             "item": self.read(str(written["item_id"]), include_sources=True),
+        }
+
+    def _resolve_source_keys(
+        self,
+        keys: Any,
+        existing: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Turn client-supplied evidence keys into complete source refs.
+
+        Local fork: the client only names which raw messages to keep. Already
+        bound refs are reused as-is (their binding_method stays
+        ``archive_pipeline``); new ones are read back from ``raw_events`` so no
+        content ever travels through the browser, and a key that no longer
+        exists fails loudly instead of silently shrinking the evidence set.
+        """
+
+        if not isinstance(keys, list) or not keys:
+            raise ValueError("source_keys must be a non-empty list")
+        if len(keys) > MAX_SOURCE_REFS_PER_ITEM:
+            raise ValueError(
+                f"at most {MAX_SOURCE_REFS_PER_ITEM} source refs may support one item"
+            )
+        exact = {_source_key(ref): ref for ref in existing}
+        by_message = {
+            (str(ref.get("source_system") or ""), str(ref.get("message_id") or "")): ref
+            for ref in existing
+        }
+        resolved: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+        with closing(self._connect()) as conn:
+            for raw in keys:
+                if not isinstance(raw, dict):
+                    raise ValueError("each source key must be an object")
+                system = str(raw.get("source_system") or "").strip()
+                session = str(raw.get("session_id") or "").strip()
+                message = str(raw.get("message_id") or "").strip()
+                if not system or not message:
+                    raise ValueError("source key requires source_system and message_id")
+                key = (system, session, message)
+                if key in seen:
+                    continue
+                seen.add(key)
+                known = exact.get(key) or by_message.get((system, message))
+                if known is not None:
+                    resolved.append(dict(known))
+                    continue
+                row = conn.execute(
+                    "SELECT id, source, session_id, source_event_id, role, text, created_at "
+                    "FROM raw_events WHERE source=? AND (source_event_id=? OR CAST(id AS TEXT)=?) "
+                    "ORDER BY id LIMIT 1",
+                    (system, message, message),
+                ).fetchone()
+                if row is None:
+                    raise ValueError(f"原文已不在归档中，无法绑定：{message}")
+                resolved.append(
+                    {
+                        "source_system": str(row["source"]),
+                        "session_id": session or str(row["session_id"] or ""),
+                        "message_id": str(row["source_event_id"] or message),
+                        "role": str(row["role"] or "user"),
+                        "created_at": str(row["created_at"] or ""),
+                        "content": str(row["text"] or ""),
+                        "snapshot_ref": "",
+                        "binding_method": "manual_edit",
+                        "evidence_kind": "supporting",
+                    }
+                )
+        if not resolved:
+            raise ValueError("source_keys resolved to no evidence")
+        resolved.sort(key=lambda ref: (str(ref.get("created_at") or ""), _source_key(ref)))
+        primary = next(
+            (index for index, ref in enumerate(resolved)
+             if str(ref.get("evidence_kind") or "") == "primary"),
+            0,
+        )
+        return [
+            {**ref, "evidence_kind": "primary" if index == primary else "supporting"}
+            for index, ref in enumerate(resolved)
+        ]
+
+    def source_candidates(
+        self,
+        item_id: str,
+        *,
+        query: str = "",
+        before_id: Any = 0,
+        after_id: Any = 0,
+        limit: Any = 80,
+    ) -> dict[str, Any]:
+        """Bounded raw-message window around an item's current evidence.
+
+        Local fork: the picker may only move through the conversation that the
+        event is already bound to. The window is anchored on the bound raw ids,
+        so a manual re-bind cannot silently pull in unrelated sessions.
+        """
+
+        safe_id = _required_identifier(item_id, "item_id", 128)
+        current = self.read(safe_id, include_sources=True)
+        if current is None:
+            raise ValueError("item not found")
+        try:
+            window = max(5, min(200, int(limit or 80)))
+        except (TypeError, ValueError):
+            window = 80
+        text_query = str(query or "").strip()
+        cursor_before = int(before_id or 0)
+        cursor_after = int(after_id or 0)
+        refs = current.get("source_refs") or []
+        bound_keys = {_source_key(ref) for ref in refs}
+        bound_messages = {
+            (str(ref.get("source_system") or ""), str(ref.get("message_id") or ""))
+            for ref in refs
+        }
+
+        with closing(self._connect()) as conn:
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='raw_events' AND type='table'"
+            ).fetchone() is None:
+                return {"ok": True, "items": [], "reason": "raw_events_unavailable",
+                        "mode": "search" if text_query else "window"}
+            anchors: list[sqlite3.Row] = []
+            for ref in refs:
+                row = conn.execute(
+                    "SELECT id, source, session_id, source_event_id, role, text, created_at "
+                    "FROM raw_events WHERE source=? AND (source_event_id=? OR CAST(id AS TEXT)=?) "
+                    "ORDER BY id LIMIT 1",
+                    (
+                        str(ref.get("source_system") or ""),
+                        str(ref.get("message_id") or ""),
+                        str(ref.get("message_id") or ""),
+                    ),
+                ).fetchone()
+                if row is not None:
+                    anchors.append(row)
+            if not anchors:
+                return {"ok": True, "items": [], "reason": "evidence_not_in_archive",
+                        "mode": "search" if text_query else "window"}
+            sessions: dict[tuple[str, str], int] = {}
+            for row in anchors:
+                scope = (str(row["source"]), str(row["session_id"] or ""))
+                sessions[scope] = sessions.get(scope, 0) + 1
+            source_system, session_id = max(sessions.items(), key=lambda pair: pair[1])[0]
+            ids = [int(row["id"]) for row in anchors if str(row["source"]) == source_system]
+            first_id, last_id = min(ids), max(ids)
+
+            def payload(row: sqlite3.Row) -> dict[str, Any]:
+                message_id = str(row["source_event_id"] or row["id"])
+                text = str(row["text"] or "")
+                return {
+                    "raw_id": int(row["id"]),
+                    "message_id": message_id,
+                    "source_system": str(row["source"]),
+                    "session_id": str(row["session_id"] or ""),
+                    "role": str(row["role"] or "user"),
+                    "created_at": str(row["created_at"] or ""),
+                    "excerpt": text if len(text) <= 800 else text[:800] + "…",
+                    "content_length": len(text),
+                    "bound": (
+                        (str(row["source"]), str(row["session_id"] or ""), message_id) in bound_keys
+                        or (str(row["source"]), message_id) in bound_messages
+                    ),
+                }
+
+            base = "SELECT id, source, session_id, source_event_id, role, text, created_at FROM raw_events WHERE source=? AND session_id=?"
+            scope = (source_system, session_id)
+            has_more_before = False
+            has_more_after = False
+            mode = "search" if text_query else "window"
+            if text_query:
+                rows = conn.execute(
+                    base + " AND instr(text, ?)>0 ORDER BY id DESC LIMIT ?",
+                    (*scope, text_query, window + 1),
+                ).fetchall()
+                has_more_before = len(rows) > window
+                rows = list(reversed(rows[:window]))
+            elif cursor_after:
+                rows = conn.execute(
+                    base + " AND id>? ORDER BY id ASC LIMIT ?",
+                    (*scope, cursor_after, window + 1),
+                ).fetchall()
+                has_more_after = len(rows) > window
+                rows = rows[:window]
+            elif cursor_before:
+                rows = conn.execute(
+                    base + " AND id<? ORDER BY id DESC LIMIT ?",
+                    (*scope, cursor_before, window + 1),
+                ).fetchall()
+                has_more_before = len(rows) > window
+                rows = list(reversed(rows[:window]))
+            else:
+                # 默认以最后一条已绑定原文为锚，窗口必须包含它本身，否则人看不到
+                # 「当前这段落在对话的哪个位置」。向左放宽一倍，让还没绑定的前文
+                # 也能一次露出来。
+                left = max(4, window)
+                right = max(2, window // 4)
+                earlier = conn.execute(
+                    base + " AND id<=? ORDER BY id DESC LIMIT ?",
+                    (*scope, last_id, left),
+                ).fetchall()
+                has_more_before = bool(
+                    conn.execute(
+                        base + " AND id<? ORDER BY id DESC LIMIT 1",
+                        (*scope, earlier[-1]["id"] if earlier else last_id),
+                    ).fetchone()
+                )
+                later = conn.execute(
+                    base + " AND id>? ORDER BY id ASC LIMIT ?",
+                    (*scope, last_id, right + 1),
+                ).fetchall()
+                has_more_after = len(later) > right
+                rows = list(reversed(earlier)) + later[:right]
+            items = [payload(row) for row in rows]
+        return {
+            "ok": True,
+            "mode": mode,
+            "source_system": source_system,
+            "session_id": session_id,
+            "other_sessions": sorted(
+                {f"{pair[0]}:{pair[1]}" for pair in sessions} - {f"{source_system}:{session_id}"}
+            ),
+            "bounds": {"first_raw_id": first_id, "last_raw_id": last_id},
+            "window": {
+                "first_raw_id": items[0]["raw_id"] if items else 0,
+                "last_raw_id": items[-1]["raw_id"] if items else 0,
+            },
+            "has_more_before": has_more_before,
+            "has_more_after": has_more_after,
+            "items": items,
         }
 
     def review_event_recallable(
@@ -1615,16 +1853,56 @@ class FactEventStore:
         }
 
     def set_status(self, item_id: str, status: str) -> dict[str, Any]:
-        """Archive or restore one current Fact/Event item."""
+        """Archive or restore one current Fact/Event item.
+
+        Local fork: 人工合并后需要把被并入的旧版标记为 tombstoned，让导出与
+        召回都不再出现它（superseded 仍会进导出）。墓碑只允许落在已 superseded
+        且存在 active 后继的版本上，避免把在用事件直接作废。
+        """
 
         safe_id = _required_identifier(item_id, "item_id", 128)
         target = str(status or "").strip().lower()
-        if target not in {"active", "archived"}:
-            raise ValueError("status must be active or archived")
+        if target not in {"active", "archived", "tombstoned"}:
+            raise ValueError("status must be active, archived or tombstoned")
         current = self.read(safe_id, include_sources=False)
         if current is None:
             raise ValueError("item not found")
-        if str(current["status"]) not in {"active", "archived"}:
+        if target == "tombstoned":
+            if str(current["status"]) != "superseded":
+                raise ValueError("only superseded items may be tombstoned")
+            with closing(self._connect()) as conn:
+                successor = conn.execute(
+                    """
+                    SELECT e.status
+                    FROM fact_event_replacement_edges AS r
+                    JOIN fact_events AS e ON e.item_id = r.successor_id
+                    WHERE r.predecessor_id = ?
+                    LIMIT 1
+                    """,
+                    (safe_id,),
+                ).fetchone()
+            if successor is None or str(successor["status"]) != "active":
+                raise ValueError("tombstoned item requires an active successor")
+            with closing(self._connect()) as conn:
+                referenced = None
+                if conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name IN ('narrative_materials', 'documents')"
+                    " AND type='table' GROUP BY 1 HAVING COUNT(*) = 2"
+                ).fetchone():
+                    referenced = conn.execute(
+                        """
+                        SELECT 1 FROM narrative_materials AS m
+                        JOIN documents AS d ON d.id = m.document_id
+                        WHERE m.target_id = ?
+                          AND m.disposition NOT IN ('excluded', 'mentioned')
+                          AND d.lifecycle != 'deleted'
+                        LIMIT 1
+                        """,
+                        (safe_id,),
+                    ).fetchone()
+            if referenced is not None:
+                raise ValueError("tombstoned item is still referenced by a narrative")
+        elif str(current["status"]) not in {"active", "archived"}:
             raise ValueError("only active or archived items may change status")
         now = _now()
         with closing(self._connect()) as conn:

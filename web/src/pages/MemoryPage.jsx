@@ -1,3 +1,4 @@
+import { EventMailboxSelect } from "../components/EventMailboxSelect.jsx";
 import { identityName, instanceSettings } from "../storage/instanceStore.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -6,6 +7,7 @@ import {
   ArrowsClockwise,
   BookOpenText,
   CalendarBlank,
+  CaretLeft,
   CaretRight,
   ChatCircleText,
   Check,
@@ -194,11 +196,20 @@ function sceneExcerpt(body) {
   return plain.length <= 108 ? plain : `${plain.slice(0, 107)}…`;
 }
 
+function eventSourceKey(ref) {
+  return `${ref?.source_system || ""}|${ref?.session_id || ""}|${ref?.message_id || ""}`;
+}
+
+function previewSourceText(value, limit = 2400) {
+  const text = String(value || "");
+  return text.length <= limit ? text : `${text.slice(0, limit)}\n…（仅预览前 ${limit} 字，绑定仍按完整原文）`;
+}
+
 function sourceTimeLabel(value) {
   return formatSourceTime(value, { includeYear: true });
 }
 
-function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted, onFavoriteChanged }) {
+function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted, onFavoriteChanged, onMerged }) {
   const [favorite,setFavorite] = useState(false);
   const [favoriteReady,setFavoriteReady] = useState(false);
   useEffect(()=>{let active=true;loadPersonalScope('favorite').then(rows=>{if(active){setFavorite(!!rows.find(row=>row.key===item.item_id)?.value.favorite);setFavoriteReady(true);}}).catch(()=>{});return()=>{active=false;};},[item.item_id]);
@@ -212,14 +223,220 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
   const [draft, setDraft] = useState(() => ({
     title: item.title || "",
     body: item.body || "",
+    sources: (item.source_refs || []).map((ref) => ({ ...ref })),
   }));
   const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
   const [rewriting, setRewriting] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeCandidates, setMergeCandidates] = useState([]);
+  const [mergeSelected, setMergeSelected] = useState(() => new Set());
+  const [mergeState, setMergeState] = useState("idle");
+  const [mergeMessage, setMergeMessage] = useState("");
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [candidates, setCandidates] = useState([]);
+  const [sourceState, setSourceState] = useState("idle");
+  const [sourceMessage, setSourceMessage] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
+  const [picked, setPicked] = useState(() => new Set());
+  const [windowEdge, setWindowEdge] = useState({ first: 0, last: 0, moreBefore: false, moreAfter: false });
+
+  // 详情组件以 item_id 为 key 挂载，新版本落库后整块重建，草稿自然以库里的原文为准。
+  const beginEditing = async () => {
+    let base = item;
+    if (!Array.isArray(item.source_refs)) {
+      setState("saving");
+      setMessage("正在读取原文…");
+      try {
+        const response = await fetch("/__serein/memory/event-detail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: item.item_id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (payload.item) {
+          base = payload.item;
+          onRevised(item.item_id, payload.item);
+        }
+      } catch {
+        // 读不到就按现状进入编辑，保存时只在原本有原文的情况下才强制校验。
+      }
+      setState("idle");
+      setMessage("");
+    }
+    setDraft({
+      title: base.title || "",
+      body: base.body || "",
+      sources: (base.source_refs || []).map((ref) => ({ ...ref })),
+    });
+    setPicked(new Set());
+    setSourceOpen(false);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setSourceOpen(false);
+    setPicked(new Set());
+  };
+
+  const loadCandidates = async ({ query = "", beforeId = 0, afterId = 0 } = {}) => {
+    if (sourceState === "loading") return;
+    setSourceState("loading");
+    setSourceMessage("");
+    try {
+      const response = await fetch("/__serein/memory/source-candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.item_id, query, beforeId, afterId, limit: 40 }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) throw new Error(payload.message || "读取前后文失败");
+      setCandidates(Array.isArray(payload.items) ? payload.items : []);
+      setActiveQuery(query);
+      setWindowEdge({
+        first: payload.window?.first_raw_id || 0,
+        last: payload.window?.last_raw_id || 0,
+        moreBefore: Boolean(payload.has_more_before),
+        moreAfter: Boolean(payload.has_more_after),
+      });
+      setSourceState("ready");
+      if (!payload.items?.length) {
+        setSourceMessage(query ? "这段对话里没有匹配的原文。" : "这条原文附近没有再可用的消息。");
+      }
+    } catch (error) {
+      setSourceState("error");
+      setSourceMessage(error.message || "读取前后文失败");
+    }
+  };
+
+  const openSourcePicker = () => {
+    setSourceOpen(true);
+    setPicked(new Set());
+    loadCandidates({ query: activeQuery });
+  };
+
+  const searchSources = (event) => {
+    event.preventDefault();
+    setPicked(new Set());
+    loadCandidates({ query: searchDraft.trim() });
+  };
+
+  const clearSourceSearch = () => {
+    setSearchDraft("");
+    setPicked(new Set());
+    loadCandidates({ query: "" });
+  };
+
+  const togglePicked = (candidate) => {
+    const key = eventSourceKey(candidate);
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const applyPicked = () => {
+    const chosen = candidates.filter((candidate) => picked.has(eventSourceKey(candidate)));
+    if (chosen.length) {
+      setDraft((current) => {
+        const merged = [...current.sources];
+        for (const candidate of chosen) {
+          const key = eventSourceKey(candidate);
+          if (merged.some((ref) => eventSourceKey(ref) === key)) continue;
+          merged.push({
+            source_system: candidate.source_system,
+            session_id: candidate.session_id,
+            message_id: candidate.message_id,
+            role: candidate.role,
+            created_at: candidate.created_at,
+            content: candidate.excerpt,
+          });
+        }
+        merged.sort((left, right) => String(left.created_at || "").localeCompare(String(right.created_at || "")));
+        return { ...current, sources: merged };
+      });
+    }
+    setPicked(new Set());
+    setSourceOpen(false);
+  };
+
+  const removeSource = (key) => {
+    setDraft((current) => {
+      if (current.sources.length <= 1) return current;
+      return { ...current, sources: current.sources.filter((ref) => eventSourceKey(ref) !== key) };
+    });
+  };
+
+  const openMerge = async () => {
+    if (item.item_type !== "event" || mergeState === "loading") return;
+    setMergeOpen(true);
+    setMergeState("loading");
+    setMergeMessage("正在找相邻事件…");
+    try {
+      const response = await fetch(`/__serein/memory/merge-candidates?itemId=${encodeURIComponent(item.item_id)}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.message || "读取相邻事件失败");
+      setMergeCandidates(Array.isArray(payload.candidates) ? payload.candidates : []);
+      setMergeState("idle");
+      setMergeMessage(payload.candidates?.length ? "" : "前后没有可合并的进行中事件。");
+    } catch (error) {
+      setMergeState("error");
+      setMergeMessage(error.message || "读取相邻事件失败");
+    }
+  };
+
+  const toggleMerge = (mergeId) => setMergeSelected((current) => {
+    const next = new Set(current);
+    if (next.has(mergeId)) next.delete(mergeId);
+    else next.add(mergeId);
+    return next;
+  });
+
+  const mergeEvents = async () => {
+    const mergeIds = Array.from(mergeSelected);
+    if (!mergeIds.length || mergeState === "saving") return;
+    const picked = mergeCandidates.filter((candidate) => mergeSelected.has(candidate.item_id));
+    if (!window.confirm(
+      `把这 ${mergeIds.length} 条并入「${item.title || "当前事件"}」？\n\n` +
+      picked.map((candidate) => `· ${candidate.title || candidate.item_id}`).join("\n") +
+      "\n\n原文取并集，被并入的旧事件作废，正文沿用当前这条，合并后可以再点重写。",
+    )) return;
+    setMergeState("saving");
+    setMergeMessage("正在合并…");
+    try {
+      const response = await fetch("/__serein/memory/merge-fact-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.item_id, mergeIds }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.item) throw new Error(payload.message || "合并失败");
+      const failed = Array.isArray(payload.tombstone_failed_item_ids) ? payload.tombstone_failed_item_ids : [];
+      setMergeOpen(false);
+      setMergeSelected(new Set());
+      setMergeCandidates([]);
+      setMergeState("idle");
+      if (onMerged) onMerged(item.item_id, payload.item, mergeIds);
+      setState("saved");
+      setMessage(failed.length
+        ? `已合并为一条；有 ${failed.length} 条旧事件仍被叙事卷引用，未作废，先解除引用再处理。`
+        : "已合并为一条事件，原文为并集，建议再点一次重写。");
+    } catch (error) {
+      setMergeState("error");
+      setMergeMessage(error.message || "合并失败");
+    }
+  };
 
   const rewrite = async () => {
     if (item.item_type !== "event") return;
-    if (!window.confirm("让模型按绑定的原文重写这条事件？当前正文会被替换，旧版本仍保留为历史版本。")) return;
+    if (!window.confirm(
+      "让模型按绑定的原文重写这条事件？当前正文会被替换，旧版本仍保留为历史版本。\n\n"
+      + "重写只读已落库的原文与正文。",
+    )) return;
     setRewriting(true);
     setState("saving");
     setMessage("正在重写，通常需要 20~90 秒…");
@@ -248,8 +465,17 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
 
   const save = async () => {
     if (!draft.body.trim() || (item.item_type === "event" && !draft.title.trim())) return;
+    const hadSources = Array.isArray(item.source_refs) && item.source_refs.length > 0;
+    if (hadSources && !draft.sources.length) {
+      setState("error");
+      setMessage("至少保留一条原文。");
+      return;
+    }
     setState("saving");
     setMessage("");
+    const before = (item.source_refs || []).map(eventSourceKey).join("\n");
+    const after = draft.sources.map(eventSourceKey).join("\n");
+    const sourcesChanged = before !== after;
     try {
       const response = await fetch("/__serein/memory/revise-fact-event", {
         method: "POST",
@@ -258,14 +484,30 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
           itemId: item.item_id,
           ...(draft.title.trim() !== (item.title || "") ? { title: draft.title.trim() } : {}),
           ...(draft.body.trim() !== item.body ? { body: draft.body.trim() } : {}),
+          ...(sourcesChanged
+            ? {
+              sourceKeys: draft.sources.map((ref) => ({
+                source_system: ref.source_system,
+                session_id: ref.session_id,
+                message_id: ref.message_id,
+              })),
+            }
+            : {}),
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.item) throw new Error(payload.message || payload.error || "保存失败");
       onRevised(item.item_id, payload.item);
       setEditing(false);
+      setSourceOpen(false);
       setState("saved");
-      setMessage(payload.status === "superseded" ? "已保存为新的修订版" : "已保存");
+      setMessage(
+        sourcesChanged && payload.status === "superseded"
+          ? `已保存：正文与原文都生成了新版本（${payload.item.source_count ?? draft.sources.length} 条原文）`
+          : payload.status === "superseded"
+            ? "已保存为新的修订版"
+            : "已保存",
+      );
     } catch (error) {
       setState("error");
       setMessage(error.message || "保存失败");
@@ -342,7 +584,12 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
           <div className="scene-detail__edit-actions">
             {editing ? (
               <>
-                <button type="button" onClick={() => setEditing(false)} disabled={state === "saving"}>取消</button>
+                <button type="button" onClick={cancelEditing} disabled={state === "saving"}>取消</button>
+                {item.item_type === "event" ? (
+                  <button type="button" onClick={openMerge} disabled={state === "saving" || rewriting || mergeState === "saving"}>
+                    <LinkSimple size={14} weight="light" aria-hidden="true" />{mergeOpen ? "收起合并" : "合并相邻"}
+                  </button>
+                ) : null}
                 <button className="is-primary" type="button" onClick={save} disabled={state === "saving"}>
                   <Check size={14} weight="light" aria-hidden="true" />
                   {state === "saving" ? "保存中…" : "保存修订"}
@@ -351,7 +598,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
             ) : (
               <>
                 {item.item_type==='event'&&<button type="button" aria-pressed={favorite} disabled={!favoriteReady} onClick={toggleFavorite}><Heart size={14} weight={favorite?'fill':'light'}/>{favorite?'已收藏':'收藏'}</button>}
-                <button type="button" onClick={() => setEditing(true)} disabled={state === "saving" || rewriting}>
+                <button type="button" onClick={beginEditing} disabled={state === "saving" || rewriting}>
                   <PencilSimple size={14} weight="light" aria-hidden="true" />手动编辑
                 </button>
                 <button type="button" onClick={rewrite} disabled={state === "saving" || rewriting}>
@@ -400,12 +647,162 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
             <span>{item.item_type === "event" ? "经过" : "事实"}</span>
             <textarea rows={item.item_type === "event" ? 9 : 4} maxLength={item.item_type === "event" ? 1600 : 500} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} />
           </label>
-          <p>修改正文会留下旧版本，并继续沿用已绑定的原文。</p>
+          <p>修改正文会留下旧版本，并继续沿用下面绑定的原文。</p>
+          {item.item_type === "event" ? (
+            <section className="fact-event-sources fact-event-bind">
+              <header>
+                <h3>原文</h3>
+                <span>{draft.sources.length}</span>
+                {!sourceOpen ? (
+                  <button type="button" onClick={openSourcePicker} disabled={sourceState === "loading"}>
+                    <Plus size={13} weight="light" aria-hidden="true" />添加原文
+                  </button>
+                ) : null}
+              </header>
+              {draft.sources.map((ref) => {
+                const key = eventSourceKey(ref);
+                return (
+                  <article key={key}>
+                    <div>
+                      <strong>{identityName(ref.role)}</strong>
+                      <time>{sourceTimeLabel(ref.created_at)}</time>
+                      <button
+                        className="fact-event-bind__remove"
+                        type="button"
+                        onClick={() => removeSource(key)}
+                        disabled={draft.sources.length <= 1 || state === "saving"}
+                        title={draft.sources.length <= 1 ? "至少保留一条原文" : "只解绑，不删除归档原文"}
+                      >
+                        <X size={12} weight="light" aria-hidden="true" />移除
+                      </button>
+                    </div>
+                    <p>{ref.content ? previewSourceText(ref.content) : `原文 #${ref.message_id}`}</p>
+                  </article>
+                );
+              })}
+              <p className="fact-event-bind__hint">原文改动与正文一起保存；移除只是解绑，归档里的原文不受影响。</p>
+              {sourceOpen ? (
+                <div className="fact-event-picker">
+                  <header>
+                    <h4>从这段对话里补原文</h4>
+                    <button type="button" onClick={() => setSourceOpen(false)} disabled={sourceState === "loading"}>收起</button>
+                  </header>
+                  <form className="fact-event-picker__search" onSubmit={searchSources}>
+                    <input
+                      value={searchDraft}
+                      onChange={(event) => setSearchDraft(event.target.value)}
+                      placeholder="搜索这段对话里的关键词"
+                    />
+                    <button type="submit" disabled={sourceState === "loading"}>{sourceState === "loading" ? "读取中…" : "搜索"}</button>
+                    {activeQuery ? <button type="button" onClick={clearSourceSearch} disabled={sourceState === "loading"}>清空</button> : null}
+                  </form>
+                  {sourceMessage ? (
+                    <p className={`fact-event-bind__hint${sourceState === "error" ? " is-error" : ""}`} role={sourceState === "error" ? "alert" : "status"}>
+                      {sourceMessage}
+                    </p>
+                  ) : candidates.length && candidates.every((candidate) => candidate.bound) ? (
+                    <p className="fact-event-bind__hint">这一段都已经绑定过了，用「更早」或「更晚」查看相邻对话。</p>
+                  ) : null}
+                  <div className="fact-event-picker__list">
+                    {candidates.map((candidate) => {
+                      const key = eventSourceKey(candidate);
+                      return (
+                        <label
+                          key={`${key}:${candidate.raw_id}`}
+                          className={`fact-event-picker__row${candidate.bound ? " is-bound" : ""}${picked.has(key) ? " is-picked" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={candidate.bound || picked.has(key)}
+                            disabled={candidate.bound}
+                            onChange={() => togglePicked(candidate)}
+                          />
+                          <span>
+                            <span className="fact-event-picker__meta">
+                              {identityName(candidate.role)} · {sourceTimeLabel(candidate.created_at)}
+                              {candidate.bound ? " · 已绑定" : ""}
+                              {candidate.content_length > 800 ? ` · ${candidate.content_length} 字` : ""}
+                            </span>
+                            <span className="fact-event-picker__text">{candidate.excerpt || "（空）"}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="fact-event-picker__actions">
+                    <button
+                      type="button"
+                      onClick={() => loadCandidates({ query: activeQuery, beforeId: windowEdge.first })}
+                      disabled={!windowEdge.moreBefore || sourceState === "loading"}
+                    >
+                      <CaretLeft size={13} weight="light" aria-hidden="true" />更早
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadCandidates({ query: activeQuery, afterId: windowEdge.last })}
+                      disabled={!windowEdge.moreAfter || sourceState === "loading"}
+                    >
+                      更晚<CaretRight size={13} weight="light" aria-hidden="true" />
+                    </button>
+                    <button className="is-primary" type="button" onClick={applyPicked} disabled={!picked.size || sourceState === "loading"}>
+                      加入 {picked.size || ""} 条
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
         </div>
       ) : item.item_type === "event" ? (
         <div className="scene-detail__body"><p>{item.body}</p></div>
       ) : null}
-      <section className="fact-event-sources">
+      {item.item_type === "event" && <EventMailboxSelect eventId={item.item_id} disabled={state === "saving" || editing} />}      {mergeOpen ? (
+        <section className="fact-event-sources fact-event-merge">
+          <header>
+            <h3>合并相邻事件</h3>
+            <span>{mergeSelected.size} 条已选</span>
+          </header>
+          <p className="fact-event-merge__hint">原文取并集进当前事件，被并入的旧事件作废；正文沿用当前这条，合并后再点重写。</p>
+          {mergeState === "loading" ? <p className="fact-event-merge__hint">正在读取…</p> : null}
+          {mergeCandidates.map((candidate) => (
+            <label key={candidate.item_id} className="fact-event-merge__row">
+              <input
+                type="checkbox"
+                checked={mergeSelected.has(candidate.item_id)}
+                onChange={() => toggleMerge(candidate.item_id)}
+              />
+              <span>
+                <strong>{candidate.title || candidate.item_id}</strong>
+                <span className="fact-event-merge__meta">
+                  {candidate.local_date} {candidate.local_start_time} · {candidate.source_count} 条原文 ·{" "}
+                  {candidate.gap_minutes >= 0
+                    ? `晚 ${candidate.gap_minutes} 分钟`
+                    : `早 ${Math.abs(candidate.gap_minutes)} 分钟`}
+                  {candidate.excerpt ? ` · ${candidate.excerpt}` : ""}
+                </span>
+              </span>
+            </label>
+          ))}
+          {mergeMessage ? (
+            <p className={`fact-event-merge__hint${mergeState === "error" ? " is-error" : ""}`} role={mergeState === "error" ? "alert" : "status"}>
+              {mergeMessage}
+            </p>
+          ) : null}
+          {mergeCandidates.length ? (
+            <div className="fact-event-merge__actions">
+              <button type="button" onClick={() => setMergeOpen(false)} disabled={mergeState === "saving"}>取消</button>
+              <button
+                className="is-primary"
+                type="button"
+                onClick={mergeEvents}
+                disabled={!mergeSelected.size || mergeState === "saving"}
+              >
+                {mergeState === "saving" ? "合并中…" : `并入 ${mergeSelected.size} 条`}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}{!editing ? (<section className="fact-event-sources">
         <header><h3>原文</h3><span>{item.source_refs?.length || 0}</span></header>
         {(item.source_refs || []).map((source) => (
           <article key={`${source.source_system}:${source.session_id}:${source.message_id}`}>
@@ -413,7 +810,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
             <p>{source.content || `原文 #${source.message_id}`}</p>
           </article>
         ))}
-      </section>
+      </section>) : null}
     </div>
   );
 }
@@ -842,6 +1239,7 @@ export function MemoryPage() {
             sceneId: sereinSourceIdForScene(scene),
             expectedUpdatedAt: scene.sourceUpdatedAt,
             status: status === "已沉底" ? "archived" : "active",
+            ...(status === "已沉底" ? {} : { restoreSurface: true }),
           }),
         });
         const payload = await response.json().catch(() => ({}));
@@ -1051,6 +1449,27 @@ export function MemoryPage() {
       return next;
     });
     setFactEventDetails((current) => ({ ...current, [revisedItem.item_id]: revisedItem }));
+    setSelectedFactEventId(revisedItem.item_id);
+  };
+
+  const acceptFactEventMerge = (previousId, revisedItem, mergedIds) => {
+    // 合并后旧版全部退出列表：保留项换成新版 ID，被并入项直接移除。
+    const dropped = new Set([previousId, ...(Array.isArray(mergedIds) ? mergedIds : [])]);
+    setFactEvents((current) => {
+      const next = {
+        ...current,
+        [revisedItem.item_type]: current[revisedItem.item_type]
+        .filter((item) => !dropped.has(item.item_id) && item.item_id !== revisedItem.item_id)
+        .concat(revisedItem),
+      };
+      storeFactEventCache(next);
+      return next;
+    });
+    setFactEventDetails((current) => {
+      const rest = { ...current };
+      for (const itemId of dropped) delete rest[itemId];
+      return { ...rest, [revisedItem.item_id]: revisedItem };
+    });
     setSelectedFactEventId(revisedItem.item_id);
   };
 
@@ -1707,6 +2126,7 @@ export function MemoryPage() {
               onRevised={acceptFactEventRevision}
               onStatusChanged={acceptFactEventStatus}
               onDeleted={acceptFactEventDeletion}
+              onMerged={acceptFactEventMerge}
             />
           ) : null}
         </aside>

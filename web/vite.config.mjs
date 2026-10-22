@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { eventMailboxBridge } from './server/eventMailboxBridge.mjs';
 import { appearanceBridge } from './server/appearanceBridge.mjs';
+import { backupDownload } from './server/backupDownload.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, posix, win32 } from "node:path";
@@ -694,6 +696,7 @@ function sereinMemoryBridge() {
     configureServer(server) {
       const narrativePreviewJobs = createNarrativePreviewJobs();
       appearanceBridge(server, callSereinBackend, readJsonBody);
+      eventMailboxBridge(server, callSereinBackend, readJsonBody);
       server.middlewares.use("/__serein/export/markdown", async (request,response)=>{
         if(request.method!=="GET"){response.statusCode=405;response.end();return;}
         try {
@@ -708,20 +711,7 @@ function sereinMemoryBridge() {
           response.end(Buffer.from(await result.arrayBuffer()));
         } catch {response.statusCode=502;response.end("Export unavailable");}
       });
-      server.middlewares.use("/__serein/export/backup", async (request,response)=>{
-        if(request.method!=="GET"){response.statusCode=405;response.end();return;}
-        try {
-          const base=process.env.SEREIN_MEMORY_URL;
-          const token=process.env.SEREIN_MEMORY_TOKEN;
-          if(!base || !token)throw new Error("backend_not_configured");
-          const result=await fetch(base.replace(/\/$/,"")+"/v1/export/backup",{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(60_000)});
-          response.statusCode=result.status;
-          response.setHeader("Cache-Control","no-store");
-          response.setHeader("Content-Type",result.ok?"application/octet-stream":"application/json");
-          if(result.ok)response.setHeader("Content-Disposition",'attachment; filename="serein-backup.db"');
-          response.end(Buffer.from(await result.arrayBuffer()));
-        } catch {response.statusCode=502;response.end("Export unavailable");}
-      });
+      server.middlewares.use("/__serein/export/backup", backupDownload);
       server.middlewares.use("/__serein/migration", async (request,response)=>{
         response.setHeader("Cache-Control","no-store");
         const path=new URL(request.url,"http://localhost").pathname;
@@ -784,9 +774,11 @@ function sereinMemoryBridge() {
         response.setHeader("Cache-Control", "no-store");
         const candidates = request.url?.split("?")[0] === "/resume-candidates";
         const prepare = request.url?.split("?")[0] === "/prepare-memory";
+        const indexStatus = request.url?.split("?")[0] === "/index-status";
+        const resumeIndex = request.url?.split("?")[0] === "/resume-index";
         const discovery = request.url?.split("?")[0] === "/models/discover";
         const template = request.url?.split("?")[0] === "/upstreams-template";
-        if (!(candidates ? ["GET"] : prepare || template || discovery ? ["POST"] : ["GET", "PATCH"]).includes(request.method)) {
+        if (!(candidates || indexStatus ? ["GET"] : prepare || resumeIndex || template || discovery ? ["POST"] : ["GET", "PATCH"]).includes(request.method)) {
           response.statusCode = 405; response.end(JSON.stringify({ error: "method_not_allowed" })); return;
         }
         // Mutations are same-origin JSON requests, never cross-site form posts.
@@ -795,9 +787,9 @@ function sereinMemoryBridge() {
           response.statusCode = 403; response.end(JSON.stringify({ error: "origin_not_allowed" })); return;
         }
         try {
-          const result = await callSereinBackend(candidates ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
+          const result = await callSereinBackend(candidates || indexStatus || resumeIndex ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
             method: request.method,
-            ...(request.method === "PATCH" || template || discovery ? { body: await readJsonBody(request, 256_000) } : {}),
+            ...(request.method === "PATCH" || resumeIndex || template || discovery ? { body: await readJsonBody(request, 256_000) } : {}),
           }, {timeout: prepare ? 600_000 : 30_000});
           response.statusCode = result.status; response.end(JSON.stringify(result.payload));
         } catch {
@@ -932,6 +924,36 @@ function sereinMemoryBridge() {
         }
       });
 
+      // Local fork: 编辑前取一次完整快照。列表项默认不含原文，若依赖异步补全
+      // 就会出现「原文 0 条」的编辑态，这里给出确定性的读取。
+      server.middlewares.use("/__serein/memory/event-detail", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        if (request.method !== "POST") {
+          response.statusCode = 405;
+          response.end(JSON.stringify({ error: "method_not_allowed" }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          const itemId = String(body.itemId || "").trim();
+          if (!itemId) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
+            return;
+          }
+          const upstream = await callSereinDashboard("/api/fact-events/read-many", {
+            method: "POST",
+            body: { item_ids: [itemId], include_sources: true },
+          });
+          response.statusCode = upstream.ok ? 200 : upstream.status;
+          response.end(JSON.stringify({ ok: upstream.ok, item: (upstream.payload?.items || [])[0] || null }));
+        } catch (error) {
+          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.end(JSON.stringify({ ok: false, message: "没有读到这条记忆的原文。" }));
+        }
+      });
+
       server.middlewares.use("/__serein/memory/revise-fact-event", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
@@ -941,6 +963,15 @@ function sereinMemoryBridge() {
         }
         try {
           const body = await readJsonBody(request);
+          const sourceKeys = Array.isArray(body.sourceKeys)
+            ? body.sourceKeys
+              .map((item) => ({
+                source_system: String(item?.source_system || "").trim(),
+                session_id: String(item?.session_id || "").trim(),
+                message_id: String(item?.message_id || "").trim(),
+              }))
+              .filter((item) => item.source_system && item.message_id)
+            : null;
           const upstream = await callSereinDashboard("/api/fact-events/revise", {
             method: "POST",
             body: {
@@ -948,7 +979,9 @@ function sereinMemoryBridge() {
               title: body.title,
               body: body.body,
               ...(Object.prototype.hasOwnProperty.call(body, "recallable") ? { recallable: body.recallable } : {}),
+              ...(sourceKeys ? { source_keys: sourceKeys } : {}),
             },
+            timeoutMs: sourceKeys ? 60_000 : 30_000,
           });
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
@@ -984,6 +1017,263 @@ function sereinMemoryBridge() {
             error: "fact_event_rewrite_failed",
             message: error?.name === "AbortError" ? "重写超时：模型 5 分钟没有返回，未落库。" : "没有完成这次重写。",
           }));
+        }
+      });
+
+      // Local fork: 人工改绑原文的候选池。只给当前已绑定原文所在会话的前后文，
+      // 外加关键词检索；正文按需截断，真正落库的内容由后端回查归档。
+      server.middlewares.use("/__serein/memory/source-candidates", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        if (request.method !== "POST") {
+          response.statusCode = 405;
+          response.end(JSON.stringify({ error: "method_not_allowed" }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          const itemId = String(body.itemId || "").trim();
+          if (!itemId) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
+            return;
+          }
+          const upstream = await callSereinDashboard("/api/fact-events/source-candidates", {
+            method: "POST",
+            body: {
+              item_id: itemId,
+              query: String(body.query || "").trim(),
+              before_id: Number(body.beforeId) || 0,
+              after_id: Number(body.afterId) || 0,
+              limit: Number(body.limit) || 80,
+            },
+            timeoutMs: 30_000,
+          });
+          response.statusCode = upstream.status;
+          response.end(JSON.stringify(upstream.payload));
+        } catch (error) {
+          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.end(JSON.stringify({
+            ok: false,
+            error: "source_candidates_failed",
+            message: "没有读到这段对话的前后文。",
+            items: [],
+          }));
+        }
+      });
+
+      // Local fork: 人工把相邻的碎事件并成一条。合并只取原文并集并生成新版本，
+      // 旧版一律 superseded，其中被并入的那些再打 tombstoned（导出与召回都不再出现）。
+      server.middlewares.use("/__serein/memory/merge-candidates", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        if (request.method !== "GET") {
+          response.statusCode = 405;
+          response.end(JSON.stringify({ error: "method_not_allowed" }));
+          return;
+        }
+        try {
+          const itemId = String(new URL(request.url || "/", "http://serein.local").searchParams.get("itemId") || "").trim();
+          if (!itemId) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
+            return;
+          }
+          const current = await callSereinDashboard("/api/fact-events/read-many", {
+            method: "POST",
+            body: { item_ids: [itemId], include_sources: true },
+          });
+          const target = (current.payload?.items || [])[0];
+          if (!target || target.item_type !== "event") {
+            response.statusCode = 404;
+            response.end(JSON.stringify({ ok: false, message: "事件不存在。" }));
+            return;
+          }
+          const baseDay = String(target.local_date || "").slice(0, 10);
+          const dayAt = (offset) => {
+            const stamp = Date.parse(`${baseDay}T00:00:00Z`);
+            return Number.isNaN(stamp) ? "" : new Date(stamp + offset * 86_400_000).toISOString().slice(0, 10);
+          };
+          const days = [-2, -1, 0, 1, 2].map(dayAt).filter(Boolean);
+          const listed = await Promise.all(days.map((day) => callSereinDashboard(
+            `/api/fact-events?type=event&status=active&date=${day}&limit=200`,
+          ).catch(() => ({ payload: { items: [] } }))));
+          const seen = new Set([itemId]);
+          const startOf = (item) => Date.parse(`${String(item.local_date || "").slice(0, 10)}T${item.local_start_time || "00:00:00"}+08:00`);
+          const endOf = (item) => Date.parse(`${String(item.local_end_date || item.local_date || "").slice(0, 10)}T${item.local_end_time || "23:59:59"}+08:00`);
+          const targetStart = startOf(target);
+          const targetEnd = endOf(target);
+          const candidates = [];
+          for (const result of listed) {
+            for (const item of result.payload?.items || []) {
+              if (!item?.item_id || seen.has(item.item_id) || item.item_type !== "event" || item.status !== "active") continue;
+              seen.add(item.item_id);
+              const candidateStart = startOf(item);
+              const candidateEnd = endOf(item);
+              if (Number.isNaN(candidateStart) || Number.isNaN(candidateEnd)) continue;
+              const gapMinutes = candidateStart >= targetEnd
+                ? Math.round((candidateStart - targetEnd) / 60_000)
+                : Math.round((targetStart - candidateEnd) / 60_000);
+              candidates.push({
+                item_id: item.item_id,
+                title: item.title || "",
+                excerpt: String(item.body || "").slice(0, 60),
+                local_date: item.local_date,
+                local_start_time: item.local_start_time,
+                local_end_time: item.local_end_time,
+                source_count: Number(item.source_count || 0),
+                gap_minutes: gapMinutes,
+              });
+            }
+          }
+          candidates.sort((left, right) => Math.abs(left.gap_minutes) - Math.abs(right.gap_minutes));
+          response.statusCode = 200;
+          response.end(JSON.stringify({ ok: true, base: {
+            item_id: target.item_id,
+            title: target.title || "",
+            local_date: target.local_date,
+            source_count: Number(target.source_count || (target.source_refs || []).length),
+          }, candidates: candidates.slice(0, 15) }));
+        } catch (error) {
+          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.end(JSON.stringify({ ok: false, message: "读取相邻事件失败。" }));
+        }
+      });
+
+      server.middlewares.use("/__serein/memory/merge-fact-events", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        if (request.method !== "POST") {
+          response.statusCode = 405;
+          response.end(JSON.stringify({ error: "method_not_allowed" }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          const targetId = String(body.itemId || "").trim();
+          const mergeIds = Array.from(new Set(
+            (Array.isArray(body.mergeIds) ? body.mergeIds : [])
+              .map((value) => String(value || "").trim())
+              .filter((value) => value && value !== targetId),
+          ));
+          if (!targetId || !mergeIds.length) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ ok: false, message: "需要一条保留的事件和至少一条被并入的事件。" }));
+            return;
+          }
+          const read = await callSereinDashboard("/api/fact-events/read-many", {
+            method: "POST",
+            body: { item_ids: [targetId, ...mergeIds], include_sources: true },
+          });
+          const byId = new Map((read.payload?.items || []).map((item) => [item.item_id, item]));
+          const target = byId.get(targetId);
+          if (!target) {
+            response.statusCode = 404;
+            response.end(JSON.stringify({ ok: false, message: "要保留的事件不存在。" }));
+            return;
+          }
+          if (target.item_type !== "event" || target.status !== "active") {
+            response.statusCode = 409;
+            response.end(JSON.stringify({ ok: false, message: "只有进行中的事件可以被合并。" }));
+            return;
+          }
+          for (const id of mergeIds) {
+            const item = byId.get(id);
+            if (!item) {
+              response.statusCode = 404;
+              response.end(JSON.stringify({ ok: false, message: `待并入的事件不存在：${id}` }));
+              return;
+            }
+            if (item.item_type !== "event" || item.status !== "active") {
+              response.statusCode = 409;
+              response.end(JSON.stringify({ ok: false, message: `只有进行中的事件可以被合并：${item.title || id}` }));
+              return;
+            }
+          }
+          // 原文并集：以 source_system|session_id|message_id 去重，保留最早的时间顺序。
+          const refs = new Map();
+          const pushRefs = (item, demote) => {
+            for (const ref of item.source_refs || []) {
+              const key = [ref.source_system, ref.session_id || ref.thread_id || "", ref.message_id].join("|");
+              const evidenceKind = !demote && ref.evidence_kind === "primary" ? "primary" : "supporting";
+              if (!refs.has(key)) refs.set(key, { ...ref, evidence_kind: evidenceKind });
+              else if (refs.get(key).evidence_kind !== "primary" && evidenceKind === "primary") {
+                refs.set(key, { ...refs.get(key), evidence_kind: "primary" });
+              }
+            }
+          };
+          pushRefs(target, false);
+          for (const id of mergeIds) pushRefs(byId.get(id), true);
+          const mergedRefs = Array.from(refs.values()).sort((left, right) => (
+            String(left.created_at).localeCompare(String(right.created_at))
+            || String(left.message_id).localeCompare(String(right.message_id))
+          ));
+          const primary = mergedRefs.find((ref) => ref.evidence_kind === "primary");
+          if (!primary && mergedRefs.length) mergedRefs[0] = { ...mergedRefs[0], evidence_kind: "primary" };
+          // 只有一条 primary：其余全部压成 supporting。
+          let primarySeen = false;
+          const finalRefs = mergedRefs.map((ref) => {
+            if (ref.evidence_kind === "primary" && !primarySeen) {
+              primarySeen = true;
+              return ref;
+            }
+            return { ...ref, evidence_kind: "supporting" };
+          });
+          const recallable = [target, ...mergeIds.map((id) => byId.get(id))]
+            .some((item) => item.recallable === false) ? false
+            : [target, ...mergeIds.map((id) => byId.get(id))].some((item) => item.recallable == null) ? null
+              : true;
+          const replaced = await callSereinDashboard("/api/fact-events/replacements", {
+            method: "POST",
+            body: {
+              items: [{
+                type: "event",
+                title: target.title,
+                body: target.body,
+                recallable,
+                source_refs: finalRefs,
+                supersedes_item_ids: [targetId, ...mergeIds],
+              }],
+            },
+            timeoutMs: 120_000,
+          });
+          if (!replaced.ok) {
+            response.statusCode = replaced.status;
+            response.end(JSON.stringify(replaced.payload));
+            return;
+          }
+          const successorId = replaced.payload?.items?.[0]?.item_id;
+          if (!successorId) {
+            response.statusCode = 502;
+            response.end(JSON.stringify({ ok: false, message: "合并已写入但未返回新版本标识。" }));
+            return;
+          }
+          // 被并入的旧版打墓碑：导出与召回不再出现，但替换链保留。
+          const tombstoned = [];
+          const tombstoneFailed = [];
+          for (const id of mergeIds) {
+            const marked = await callSereinDashboard("/api/fact-events/status", {
+              method: "POST",
+              body: { item_id: id, status: "tombstoned" },
+            }).catch(() => ({ ok: false }));
+            (marked.ok ? tombstoned : tombstoneFailed).push(id);
+          }
+          const fresh = await callSereinDashboard("/api/fact-events/read-many", {
+            method: "POST",
+            body: { item_ids: [successorId], include_sources: true },
+          });
+          response.statusCode = 200;
+          response.end(JSON.stringify({
+            ok: true,
+            item: (fresh.payload?.items || [])[0] || null,
+            merged_item_ids: [targetId, ...mergeIds],
+            tombstoned_item_ids: tombstoned,
+            tombstone_failed_item_ids: tombstoneFailed,
+            source_count: finalRefs.length,
+          }));
+        } catch (error) {
+          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.end(JSON.stringify({ ok: false, message: "没有完成这次合并。" }));
         }
       });
 
@@ -1710,6 +2000,12 @@ function sereinMemoryBridge() {
           const sceneId = String(body.sceneId || "").trim();
           const expectedUpdatedAt = String(body.expectedUpdatedAt || "").trim();
           const status = body.status === "archived" ? "archived" : "active";
+          if ((body.restoreSurface !== undefined && typeof body.restoreSurface !== "boolean")
+              || (body.restoreSurface === true && body.status !== "active")) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ error: "invalid_scene_status", message: "恢复可浮现需要 active 状态和布尔开关。" }));
+            return;
+          }
           if (!/^[A-Za-z0-9_.:#-]{1,160}$/.test(sceneId) || !expectedUpdatedAt) {
             response.statusCode = 400;
             response.end(JSON.stringify({ error: "invalid_scene_status", message: "缺少 Scene 或版本信息。" }));
@@ -1719,6 +2015,7 @@ function sereinMemoryBridge() {
             scene_id: sceneId,
             expected_updated_at: expectedUpdatedAt,
             status,
+            ...(body.restoreSurface === undefined ? {} : { restore_surface: body.restoreSurface }),
           });
           response.statusCode = result?.status === "conflict" ? 409 : result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
