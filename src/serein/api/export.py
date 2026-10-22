@@ -34,7 +34,10 @@ def markdown_archive(database):
         reader.store.conn.execute('BEGIN')
         for kind in ('scene','event'):
             archive.writestr(kind+'/',b'')
-            rows=reader.store.conn.execute('SELECT id FROM documents WHERE kind=? ORDER BY created_at,id',(kind,)).fetchall()
+            # Superseded revisions are replaced history, not memories: exporting them
+            # next to their successor produced duplicate-looking notes in the archive.
+            lifecycle_filter=" AND lifecycle NOT IN ('deleted','superseded')" if kind=='event' else ''
+            rows=reader.store.conn.execute('SELECT id FROM documents WHERE kind=?'+lifecycle_filter+' ORDER BY created_at,id',(kind,)).fetchall()
             for row in rows:
                 result=reader.read(row['id'],with_evidence=False)
                 if not result['readable'] or not result.get('document'):continue
