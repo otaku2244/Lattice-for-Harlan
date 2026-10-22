@@ -36,10 +36,12 @@ services:
       SEREIN_LEGACY_SOURCE_HOST: ${SEREIN_LEGACY_SOURCE_HOST:-}
       SEREIN_LEGACY_SOURCE_CONFIGURED: ${SEREIN_LEGACY_SOURCE_CONFIGURED:-0}
       SEREIN_PUBLIC_ORIGIN: ${SEREIN_PUBLIC_ORIGIN:-}
+      SEREIN_WRITER_DEBUG_DIR: /writer-debug
     ports:
       - "${SEREIN_BIND:-127.0.0.1}:${SEREIN_PORT:-18217}:8080"
     volumes:
       - ./secrets:/secrets:ro
+      - ./runtime/writer-debug:/writer-debug
     networks: [serein]
     healthcheck:
       test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:8080/ready'); if (!r.ok) process.exit(1)"]

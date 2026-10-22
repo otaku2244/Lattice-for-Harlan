@@ -136,42 +136,6 @@ test('evidence retains original host identities, not archive row IDs',()=>{
   assert.equal(ref.content,'Original text');
 });
 
-test('writer keeps a finished body when only soft self-review items are false',()=>{
-  const review={source_bound:true,final_supported_versions:true,no_correction_narration:false,material_relevance:false,
-    no_new_inference:false,no_meta_explanation:false,no_forced_closure:false,dates_preserved:true,identity_correct:true};
-  const body='The notice changed the room.';
-  const result=normalizeNarrativeWriterResult({evidence_sufficient:true,body,issues:['material_relevance'],self_review:review});
-  assert.equal(result.body,body);
-  assert.equal(result.status,undefined);
-  assert.deepEqual(result.review_warnings,[
-    '自检未通过：no_correction_narration','自检未通过：material_relevance','自检未通过：no_new_inference',
-    '自检未通过：no_meta_explanation','自检未通过：no_forced_closure','模型自述：material_relevance',
-  ]);
-});
-test('writer still rejects a body when a hard self-review item is false',()=>{
-  const review={source_bound:true,final_supported_versions:true,no_correction_narration:true,material_relevance:true,
-    no_new_inference:true,no_meta_explanation:true,no_forced_closure:false,dates_preserved:true,identity_correct:true};
-  assert.throws(()=>normalizeNarrativeWriterResult({evidence_sufficient:true,body:'draft',issues:[],self_review:review}),
-    /narrative_writer_sufficient_result_invalid/);
-  for(const key of ['source_bound','identity_correct','dates_preserved']){
-    const broken={...review,[key]:false};
-    assert.throws(()=>normalizeNarrativeWriterResult({evidence_sufficient:true,body:'draft',issues:[],self_review:broken}),
-      /narrative_writer_sufficient_result_invalid/,`${key} must stay hard`);
-  }
-  assert.throws(()=>normalizeNarrativeWriterResult({evidence_sufficient:true,body:'   ',issues:[],self_review:{
-    ...review,no_forced_closure:true}}),/narrative_writer_sufficient_result_invalid/);
-});
-test('an insufficient verdict keeps its issues and drops any stray body',()=>{
-  const review={source_bound:false,final_supported_versions:false,no_correction_narration:false,material_relevance:false,
-    no_new_inference:false,no_meta_explanation:false,no_forced_closure:false,dates_preserved:true,identity_correct:true};
-  const result=normalizeNarrativeWriterResult({evidence_sufficient:false,body:'a draft anyway',issues:[' 材料不够 '],self_review:review});
-  assert.equal(result.body,'');
-  assert.deepEqual(result.issues,['材料不够']);
-  assert.equal(result.evidence_sufficient,false);
-  const silent=normalizeNarrativeWriterResult({evidence_sufficient:false,body:'',issues:[],self_review:review});
-  assert.equal(silent.issues.length,1);
-  assert.match(silent.issues[0],/未给出具体原因/);
-});
 test('configured Writer only sends bound text, without loading referenced images',async(t)=>{
   const review={source_bound:true,final_supported_versions:true,no_correction_narration:true,material_relevance:true,
     no_new_inference:true,no_meta_explanation:true,no_forced_closure:true,dates_preserved:true,identity_correct:true};

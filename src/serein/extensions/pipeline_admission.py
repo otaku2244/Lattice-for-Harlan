@@ -1,8 +1,23 @@
 """Optional minimum of two complete owned exchanges before Event writing."""
 
 from copy import deepcopy
+import re
 
 from .pipeline_materials import substantive_ids
+
+
+# Clients can archive tool traffic as plain text under a user/assistant role.
+# Such rows are protocol, never participant speech: a tool call or a tool result.
+_LEAD_TOOL_CALL = re.compile(r'^\s*<tool_call[>\s]', re.I)
+_LEAD_TOOL_RESULT = re.compile(r'^\s*<tool_result[_>\s]', re.I)
+
+
+def _text_tool_protocol(message):
+    """True when a row is only plain-text tool traffic, not an utterance."""
+    text = message.get('content')
+    if not isinstance(text, str):
+        return False
+    return bool(_LEAD_TOOL_CALL.match(text) or _LEAD_TOOL_RESULT.match(text))
 
 
 def add_lookahead(components):
@@ -31,6 +46,7 @@ def _visible(message):
     metadata = message.get('metadata') or {}
     return (message.get('role') in {'user', 'assistant'}
             and message.get('source') not in {'memory_event', 'trace', 'error'}
+            and not _text_tool_protocol(message)
             and not any(metadata.get(key) for key in
                         ('memory_review_only', 'memory_event_source', 'draft', 'discarded')))
 

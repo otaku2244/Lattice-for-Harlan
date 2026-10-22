@@ -107,7 +107,13 @@ def test_writer_omits_large_old_sources_and_upgrades_pending_frozen_request(sett
     old_text='OLD_SYNTHETIC_ATTACHMENT_EXPLANATION '+'x'*200000
     with Store(settings.database) as store:
         store.conn.execute("UPDATE raw_events SET text=? WHERE role='assistant'",(old_text,))
-    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=synthetic_runner))['events']==1
+    async def grounded(role,request):
+        result=output_for(role,request)
+        if role=='event_writer':
+            result['event_draft']='我把这段重新组织了一遍，按自己的顺序记下要点。'
+            result['sentence_evidence'][0]['sentence']=result['event_draft']
+        return result
+    assert asyncio.run(p.advance(settings.database,include_recent=True,runner=grounded))['events']==1
     ingest(settings,2)
     task=asyncio.run(p.advance(settings.database,include_recent=True))
     while task['role']!='event_writer':
@@ -115,7 +121,7 @@ def test_writer_omits_large_old_sources_and_upgrades_pending_frozen_request(sett
         task=asyncio.run(p.advance(settings.database,include_recent=True))
     assert len(task['request']['prompt'])<12000
     assert 'OLD_SYNTHETIC_ATTACHMENT_EXPLANATION' not in task['request']['prompt']
-    assert 'We agreed to Book club plan 1' in task['request']['prompt']
+    assert '我把这段重新组织了一遍' in task['request']['prompt']
     # A Writer task created before this change also needs a smaller prompt on resume.
     assert old_text not in json.dumps(task['request'])
     with Store(settings.database,read_only=True) as store:

@@ -19,6 +19,27 @@ class UpstreamError(ValueError):
         self.response = response
 
 
+def safe_upstream_http_error(response):
+    """Classify by status only; provider bodies/headers may contain private input."""
+    status = response.status_code
+    categories = {
+        400: ('upstream_invalid_request', 'The upstream rejected the request. Check the configured provider/model supports the submitted inputs and options.'),
+        422: ('upstream_validation_error', 'The upstream could not process the request. Check the configured provider/model supports the submitted inputs and options.'),
+        401: ('upstream_authentication_error', 'The upstream rejected its configured credentials.'),
+        403: ('upstream_permission_error', 'The upstream denied access to the configured model or endpoint.'),
+        404: ('upstream_endpoint_not_found', 'The upstream model or endpoint was not found.'),
+        413: ('upstream_request_too_large', 'The upstream rejected the request size.'),
+        429: ('upstream_rate_limit', 'The upstream rate or quota limit was reached.'),
+    }
+    category, message = categories.get(status, (
+        ('upstream_service_error', 'The upstream service returned an error.') if status >= 500
+        else ('upstream_http_error', 'The upstream returned an unsuccessful HTTP response.')))
+    # Only request validation statuses are passed through. Authentication and
+    # capacity belong to the configured upstream, not to gateway authorization.
+    return status if status in (400, 422) else 502, {
+        'code': category, 'message': message, 'upstream_status': status}
+
+
 def non_thinking_options(model):
     """Disable reasoning only through provider/model controls known to support it."""
     base_url = str(model.get('base_url') or '')
@@ -33,14 +54,21 @@ def non_thinking_options(model):
 
 
 def deepseek_tool_reasoning_compat(model, payload, *, window_id=''):
-    """Add DeepSeek's required field when an OpenAI-compatible client dropped it."""
+    """Fill missing reasoning fields for opted-in tool-history compatibility."""
     if str(model.get('protocol') or 'openai') != 'openai':
         return payload, 0
     identity = ' '.join((str(model.get('model') or ''), str(model.get('base_url') or ''))).lower()
-    if 'deepseek' not in identity or not isinstance(payload.get('tools'), list) or not payload['tools']:
+    policy = model.get('reasoning_content_compat', 'auto')
+    if policy not in ('auto', 'on') or (policy == 'auto' and 'deepseek' not in identity):
         return payload, 0
     messages = payload.get('messages')
     if not isinstance(messages, list):
+        return payload, 0
+    has_tools = isinstance(payload.get('tools'), list) and bool(payload['tools'])
+    has_tool_history = any(isinstance(message, dict) and message.get('role') == 'assistant'
+                           and isinstance(message.get('tool_calls'), list) and message['tool_calls']
+                           for message in messages)
+    if not (has_tools or has_tool_history):
         return payload, 0
     patched = None
     count = 0
@@ -56,7 +84,7 @@ def deepseek_tool_reasoning_compat(model, payload, *, window_id=''):
     if patched is None:
         return payload, 0
     result = {**payload, 'messages': patched}
-    logger.info('Gateway added empty DeepSeek reasoning_content fallback | window=%s messages=%s',
+    logger.info('Gateway added empty reasoning_content compatibility fallback | window=%s messages=%s',
                 window_id or 'main', count)
     return result, count
 
@@ -64,6 +92,7 @@ def deepseek_tool_reasoning_compat(model, payload, *, window_id=''):
 def request_for(model, payload, *, window_id=''):
     adapter = ClientContext()
     payload = {**payload, 'model': model['model']}
+    payload.pop('reasoning_content_compat', None)
     payload, _ = deepseek_tool_reasoning_compat(model, payload, window_id=window_id)
     if model.get('protocol') == 'anthropic':
         if isinstance(payload.get('thinking'), dict):
