@@ -36,16 +36,6 @@ WORLDBOOK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# gateway 经 /api/hook/recall 取回的记忆文本，由
-# recall/germany/gateway.py:_render_hook_recall_full_additional_context 渲染成
-# [Serein Gateway Full Recall] ... [/Serein Gateway Full Recall] 信封。
-# 宿主把这段原样装进 messages 时，必须整块剥离：它是系统材料，不是她的话。
-# 成对字面量 → 正则整块剥，不按行标题走跳过态，因此不会吞掉紧随其后的原话。
-GATEWAY_RECALL_ENVELOPE_RE = re.compile(
-    r"\[Serein Gateway Full Recall\][\s\S]*?\[/Serein Gateway Full Recall\]",
-    re.IGNORECASE,
-)
-
 LEADING_PROXY_SENDER_RE = re.compile(
     r"^\s*<proxy_sender\b[^>]*/>\s*",
     re.IGNORECASE,
@@ -351,8 +341,7 @@ class ClientContext:
         return ""
 
     def _strip_external_context_from_user_text(self, text: str) -> str:
-        cleaned = GATEWAY_RECALL_ENVELOPE_RE.sub("", str(text or ""))
-        cleaned = WORKSPACE_ATTACHMENT_RE.sub("", cleaned)
+        cleaned = WORKSPACE_ATTACHMENT_RE.sub("", str(text or ""))
         cleaned = EXTERNAL_CONTEXT_ATTACHMENT_RE.sub("", cleaned)
         cleaned = SELF_CLOSING_ATTACHMENT_RE.sub("", cleaned)
         cleaned = self._strip_leading_auto_context_markers(cleaned)

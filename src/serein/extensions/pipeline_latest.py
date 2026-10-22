@@ -30,17 +30,7 @@ def materialize_agent_rules(role):
     return _identity_text((Path(__file__).parents[1]/'resources'/'agents'/role/'AGENTS.md').read_text('utf-8'))
 
 EVENT_WRITER_GUIDE_MAX_CHARS = 500
-EVENT_BODY_ACCEPT_MAX_CHARS = 1000     # 单篇正文硬上限（extend 时指本次新增段落）
-EVENT_BODY_TOTAL_MAX_CHARS = 1500      # extend 时「旧正文＋新增段落」总量上限
-
-# Local fork: 质量硬校验阈值。依据 scripts/overlap_probe.py 的实测——
-# 合规改写 6-gram 重合约 12%~29%，换人称的搬运稿约 59.7%，中间有 30 点以上空档。
-EVENT_BODY_SOURCE_OVERLAP_MAX = 0.40       # 正文与 owned 原文的逐字重合上限
-EVENT_DISCARDED_OVERLAP_MAX = 0.50         # discarded_details 与正文的重合上限
-EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS = 100  # 原文太短时不启用重合检测（样本不足）
-EVENT_BODY_RATIO_MIN_SOURCE_CHARS = 300    # 原文不足此长度时不做比例检测，只兜底「不得长于原文」
-EVENT_BODY_OVERLAP_NGRAM = 6
-EVENT_BODY_SOURCE_RATIO_MAX = 0.70         # 正文净字数占 owned 原文净字数的上限（仅原文达 RATIO_MIN 时生效）
+EVENT_BODY_ACCEPT_MAX_CHARS = 1500
 
 TRACK_EVENT_POLICIES = {'default', 'rolling_engineering'}
 EVENT_CURATOR_ACTIONS = {'create', 'extend', 'rewrite', 'merge'}
@@ -100,14 +90,17 @@ def event_track_message_payload(messages: list[dict[str, Any]], snowflake_messag
         result.append(projected)
     return result
 
-def build_event_track_message_prompt(date_view: str, block_messages: list[dict[str, Any]], active_tracks: list[dict[str, Any]], snowflake_message_ids: set[int] | None=None, recent_context_messages: list[dict[str, Any]] | None=None, *, include_role_rules: bool=True) -> str:
+def build_event_track_message_prompt(date_view: str, block_messages: list[dict[str, Any]], active_tracks: list[dict[str, Any]], snowflake_message_ids: set[int] | None=None, recent_context_messages: list[dict[str, Any]] | None=None, *, include_role_rules: bool=True, compact_cards: bool=False) -> str:
     prompt_tracks = []
     for track in active_tracks:
-        item = {key: track.get(key) for key in ('track_id', 'subject', 'throughline', 'status', 'recent_turns') if track.get(key) not in (None, '', [])}
+        item = {key: track.get(key) for key in ('track_id', 'subject', 'throughline', 'status', 'task_status', 'recent_turns')
+                if track.get(key) not in (None, '', []) and (key != 'recent_turns' or not compact_cards)}
         item['event_policy'] = str(track.get('event_policy') or 'default')
         prompt_tracks.append(item)
+    source_ids = [int(message['id']) for message in block_messages]
+    example_source_id = source_ids[0] if source_ids else None
     agent_rules = materialize_agent_rules('track_router') if include_role_rules else ''
-    return f'[memory_phase: event_track_router_v2]\n日期范围：{date_view}（Asia/Shanghai；二十分钟只触发 flush，不是语义边界）\n\n{agent_rules}\n\n逐条路由原始消息。只返回：\n{{"message_assignments":[{{"source_message_id":1,"primary_track_ref":"new:1","context_track_refs":[],"routing_role":"primary_activity"}}],"track_updates":[{{"track_ref":"new:1","subject":"具体对象或事项","throughline":"这段经历的最小续接线索","event_policy":"default","status":"active"}}]}}\n\nrouting_role 可选 origin、primary_activity、landing、bridge、routine；event_policy 可选 default、rolling_engineering；status 可选 active、parked。每条 source_message 必须按原顺序恰好出现一次。每个实际使用的 Track 必须在 track_updates 恰好出现一次。新 Track 使用 new:1、new:2……。\nactive_tracks_json 只给配置回看天数内实际归入过原话的 Track，不依赖聊天窗口身份。bounded_recent_context_json 最多包含当前 session 在本批之前的六条可见原文，不得为它输出 assignment。\n只有原文表明已围绕同一个明确建设目标开展实施、排障或验证，且仍需接续这项工作，才使用 rolling_engineering；设想、未来建议或同产品关联不够。其余使用 default。已有 rolling_engineering 只能继承，不能降级。\n\n<active_tracks_json>\n{json.dumps(prompt_tracks, ensure_ascii=False, separators=(',', ':'))}\n</active_tracks_json>\n\n<raw_messages_json>\n{json.dumps(event_track_message_payload(block_messages, snowflake_message_ids), ensure_ascii=False, separators=(',', ':'))}\n</raw_messages_json>\n\n<bounded_recent_context_json>\n{json.dumps(event_track_message_payload(recent_context_messages or [], snowflake_message_ids), ensure_ascii=False, separators=(',', ':'))}\n</bounded_recent_context_json>\n'
+    return f'[memory_phase: event_track_router_v2]\n日期范围：{date_view}（Asia/Shanghai；二十分钟只触发 flush，不是语义边界）\n\n{agent_rules}\n\n逐条路由原始消息。只返回：\n{{"message_assignments":[{{"source_message_id":{json.dumps(example_source_id)},"primary_track_ref":"new:1","context_track_refs":[],"routing_role":"primary_activity"}}],"track_updates":[{{"track_ref":"new:1","subject":"具体对象或事项","throughline":"这段经历的最小续接线索","event_policy":"default","status":"active","task_status":null}}]}}\n\nrouting_role 可选 origin、primary_activity、landing、bridge、routine；event_policy 可选 default、rolling_engineering；status 可选 active、parked。本批 source_message_id 按输入顺序为 {json.dumps(source_ids)}，message_assignments 必须恰好有 {len(source_ids)} 项。source_message_id 必须照抄 raw_messages_json 的真实编号，绝不能填第几条消息的位置序号。每项都必须包含 context_track_refs，没有 context 时也必须返回 []。track_updates 只返回被引用 Track 中有变化的字段；已有 Track 可完全省略更新，或只返回 track_ref 和需要修改的字段，省略字段继承输入卡片；新 Track 必须提供 subject、throughline、status，event_policy 默认 default。未被引用的 Track 不输出更新。任务进度单独放在可选 task_status：in_progress、blocked、completed 或 null；普通交流或没有明确任务进度依据时留空。已有任务状态无新依据就省略继承；明确不适用时可设 null。status 仍只允许 active、parked，表示话题线活跃程度。task_status 不改变原话归属、Event 边界或是否结算。新 Track 只使用 new:1、new:2……，已有 Track 照抄 active_tracks_json 的完整 track_id，不自行生成持久编号。\nactive_tracks_json 只给配置回看天数内实际归入过原话的 Track，不依赖聊天窗口身份。bounded_recent_context_json 最多包含当前 session 在本批之前的六条可见原文，不得为它输出 assignment。\n只有原文表明已围绕同一个明确建设目标开展实施、排障或验证，且仍需接续这项工作，才使用 rolling_engineering；设想、未来建议或同产品关联不够。其余使用 default。已有 rolling_engineering 只能继承，不能降级。\n\n<active_tracks_json>\n{json.dumps(prompt_tracks, ensure_ascii=False, separators=(',', ':'))}\n</active_tracks_json>\n\n<raw_messages_json>\n{json.dumps(event_track_message_payload(block_messages, snowflake_message_ids), ensure_ascii=False, separators=(',', ':'))}\n</raw_messages_json>\n\n<bounded_recent_context_json>\n{json.dumps(event_track_message_payload(recent_context_messages or [], snowflake_message_ids), ensure_ascii=False, separators=(',', ':'))}\n</bounded_recent_context_json>\n'
 
 def event_curator_model_input(component: dict[str, Any], snowflake_message_ids: set[int] | None=None) -> dict[str, Any]:
     """Materialize one non-redundant unit-level view for the semantic Curator."""
@@ -153,15 +146,22 @@ def event_curator_model_input(component: dict[str, Any], snowflake_message_ids: 
         source_ids = [int(value) for value in candidate.get('source_message_ids') or []]
         if not source_ids or set(source_ids).difference(context_by_id):
             raise ValueError('Track Curator base Event is missing bound originals')
-        base_events.append({'event_id': str(candidate.get('event_id') or candidate.get('item_id') or candidate.get('id') or ''), 'primary_track_id': str(candidate.get('primary_track_id') or candidate.get('track_id') or ''), 'blocking_flags': [flag for flag in EVENT_CURATOR_BLOCKING_BASE_FLAGS if bool(candidate.get(flag))], 'messages': event_track_message_payload([context_by_id[source_id] for source_id in source_ids], snowflake_message_ids)})
-    tracks = [{'track_id': str(card.get('track_id') or ''), 'subject': str(card.get('subject') or ''), 'throughline': str(card.get('throughline') or ''), 'event_policy': str(card.get('event_policy') or 'default')} for card in component.get('track_cards') or []]
+        base = {'event_id': str(candidate.get('event_id') or candidate.get('item_id') or candidate.get('id') or ''), 'primary_track_id': str(candidate.get('primary_track_id') or candidate.get('track_id') or ''), 'blocking_flags': [flag for flag in EVENT_CURATOR_BLOCKING_BASE_FLAGS if bool(candidate.get(flag))], 'messages': event_track_message_payload([context_by_id[source_id] for source_id in source_ids], snowflake_message_ids)}
+        base['body_chars'] = len(str(candidate.get('body') or ''))
+        base['append_remaining_chars'] = append_remaining_chars(candidate)
+        if component.get('writer_material_review') and type(component.get('material_contract_version')) is int and component['material_contract_version'] == 1:
+            inherited = pipeline_materials.trusted_materials(candidate, component.get('context_messages') or [])
+            base['extend_material_mode'] = 'new_sources_only' if inherited is not None else 'full_sources'
+            base['inherited_materials'] = inherited
+        base_events.append(base)
+    tracks = [{'track_id': str(card.get('track_id') or ''), 'subject': str(card.get('subject') or ''), 'throughline': str(card.get('throughline') or ''), 'event_policy': str(card.get('event_policy') or 'default'), **({'task_status': card['task_status']} if 'task_status' in card else {})} for card in component.get('track_cards') or []]
     return {'context_request_scope': {'track_ids': list(component.get('track_ids') or []), 'before_message_id': min(stable_ids), 'session_ids': [int(item) for item in component.get('context_session_ids') or []]}, 'tracks': tracks, 'units': units, 'base_events': base_events,
             'continuity_pairs': list(component.get('continuity_pairs') or []),
             'unreviewed_continuity_pairs': list(component.get('unreviewed_continuity_pairs') or [])}
 
-def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], snowflake_message_ids: set[int] | None=None) -> str:
+def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], snowflake_message_ids: set[int] | None=None, *, include_role_rules: bool=True) -> str:
     model_input = event_curator_model_input(component, snowflake_message_ids)
-    agent_rules = materialize_agent_rules('event_curator')
+    agent_rules = materialize_agent_rules('event_curator') if include_role_rules else ''
     format_hint = {'events': [{'action': 'create', 'base_event_ids': [], 'primary_track_id': 'track_id', 'owned_unit_roots': [1]}],
                    'skip_unit_roots': [], 'defer_unit_roots': [],
                    'decision_review': {'events': [{'event_index': 0, 'reason': '这段原文实际展开的活动'}],
@@ -181,6 +181,15 @@ def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], 
                      '若告别或玩笑本身正在被讨论则保留。'
                      '附带状态确认和任务回执可省；若其本身是讨论中心或改变结果则保留。拒绝、纠正、条件、因果和有区别的语气不得省。\n'
                      if component.get('writer_material_review') else '')
+    if component.get('writer_material_review') and type(component.get('material_contract_version')) is int and component['material_contract_version'] == 1:
+        material_rule = material_rule.replace('按该 Event 的全部 owned source_message_id 逐条标记',
+            '按本次标注范围逐条标记').replace('不可遗漏或重复 owned 来源', '不可遗漏或重复本次需要标注的来源')
+        material_rule += ('普通 extend 仅在所选唯一 base 的 extend_material_mode=new_sources_only 时，'
+                         '不重复标注 inherited_materials 中的旧来源，只标注本 Event 新增 owned 来源；'
+                         '旧标注只读，host 按来源原样合入门槛和边界审阅，不得改写或再次输出。'
+                         'base 标为 full_sources 时仍标注旧+新完整来源；create、rewrite、merge 始终标注完整 owned 来源。'
+                         '完整来源绑定不变，旧原文仍可核对活动关系；reason 说明新材料如何推进旧经历。'
+                         '共享 bridge 边界可使用 host 合入的旧标注，只能引用该侧实际保留的原文片段。\n')
     boundary_rule = ('左右各自独占的 owned 原文，或共同拥有的 declared bridge 中仅一侧 main/mixed 实际保留的片段，'
                      '都可作为该侧逐字边界证据。双侧保留的同一引文不能证明边界；'
                      '不要删改完整 bridge ownership 制造独占来源；引文不得跨越省略片段拼接。'
@@ -191,9 +200,12 @@ def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], 
                        '给出 event_index、left_track_id、right_track_id、bridge_unit_root、reason，'
                        '以及两侧与桥接原文的逐字 evidence。boundaries 同时覆盖整个 events 数组相邻项和同一 Track 相邻项；'
                        '同线两条之间夹着别线 Event 也不能漏，重复配对只写一次。每对仍须双方各有逐字证据。'
-                       'Router 声明的 bridge 不自动归属两侧：若一侧 Event 拥有整枚 bridge，另一侧 Event 未拥有，'
+                       'Router 声明的 bridge 不自动归属两侧：只有两侧 Track 都有拟议 Event，且一侧 Event 拥有整枚 bridge、另一侧未拥有时，'
                        '须显式共享完整 unit，或在 decision_review.bridge_exclusions 给出 unit_root_message_id、'
-                       'excluded_track_id、reason 和该 unit 内的逐字 evidence。仅共享对象或背景可排除；'
+                       'excluded_track_id、reason 和该 unit 内的逐字 evidence，每个组合只填一次。'
+                       '双侧都拥有、双侧均未拥有或任一侧没有 Event 时，不填该组合；没有组合时返回 [] 或省略 bridge_exclusions。'
+                       '某侧没有 Event 时，其未入选 stable units 按原规则放入 skip/defer，由 dispositions 说明。'
+                       '删除多填的排除项，不为使其成立而新增 Event 或改变 ownership。仅共享对象或背景可排除；'
                        '实际回应、拒绝、纠正或收尾不可排除。\n'
                        if component.get('continuity_pairs') else
                        '你看到的是单一 primary Track 的有界 corridor。declared bridge 只共享当前直接 unit。\n')
@@ -218,9 +230,12 @@ def build_event_track_curator_prompt(date_view: str, component: dict[str, Any], 
             f'{json.dumps(format_hint, ensure_ascii=False)}\n\n'
             '只选择 scope=stable 的完整 unit。每个 stable unit 必须恰好进入 Event、skip 或 defer；只有 Router 声明的 bridge 可共享。'
             'parked/context_only 只可阅读。extend/rewrite/merge 只填写 base_event_ids，host 保留原文并集。'
-            '普通接续用 extend，Writer 仅写新增段落；只有必须整篇重新组织时才显式用 rewrite（一条 base），合并多条 base 用 merge。'
+            'action 与 base_event_ids 数量必须匹配：create 为 0，extend/rewrite 恰好为 1，merge 至少为 2；base 只能从输入的 base_events 选择。'
+            'extend 只接续输入 base_events 中某一条已保存 Event，base_event_ids 必须恰好填写该 Event 的 event_id；确认新原文接续该候选时，直接提出 extend，不另加交接标签或等待另一轮归线。同一 Track 的后续消息不等于 extend。目标不在本轮 base_events 时暂不交接，不猜 event_id，也不为查找候选发起 context_request；仍按现有入选、边界与暂缓规则处理本轮原文，不能仅因缺少旧 Event 就 skip 实质回应。base_events 为空时，拟议 Event 只能用 create，不能用 extend 加空 base。当前 events 数组内刚提出的 create 也不能作为 base；若后续 unit 仍属同一段活动，合入同一个 Event 的 owned_unit_roots，独立活动则分别 create。'
+            '接续已保存 Event 时 Writer 仅写新增段落；只有必须整篇重新组织时才显式用 rewrite（一条 base），合并多条已保存 base 用 merge。'
+            'base_events 给出 body_chars 和 append_remaining_chars（已扣除段落间两个换行）；容量为 0 或不足以表达新增内容时，为新增来源 create 后续 Event，沿用同一 primary_track_id，旧来源与旧正文只作背景；不要因为容量限制 rewrite 或 merge 旧 Event。受保护前版仍遵守原有续接开关和保护条件。'
             'parked 直接纠正紧邻 stable 结果时 defer；无关 parked 不影响已落定材料。'
-            'rolling_engineering 逐条核对实际建设，相关 base 全选；受保护前版仍拟议 extend/merge，由 host 按冻结配置检查能否原文后追加，否则暂缓。\n'
+            'rolling_engineering 逐条核对实际建设，相关 base 全选；容量耗尽的前版只作背景，不选入 merge。其他受保护前版仍拟议 extend/merge，由 host 按冻结配置检查能否原文后追加，否则暂缓。\n'
             '整个 corridor 缺少对象、起因或被纠正旧主张时可一次返回 context_request；它与 Event 决定严格二选一，'
             'reason 只允许 missing_subject、missing_origin、missing_prior_claim：\n'
             f'{json.dumps({"context_request":{"track_id":"允许的 track_id","before_message_id":1,"reason":"missing_subject"}}, ensure_ascii=False)}\n'
@@ -259,8 +274,15 @@ def _expand_compact_event_curator_output(output: dict[str, Any], component: dict
     defer_roots = unit_roots(raw_defer, 'defer')
     compact_events: list[dict[str, Any]] = []
     for raw_event in raw_events:
-        if not isinstance(raw_event, dict) or set(raw_event) != {'action', 'base_event_ids', 'primary_track_id', 'owned_unit_roots'}:
-            raise ValueError('Track Curator compact Event has invalid fields')
+        if not isinstance(raw_event, dict):
+            raise ValueError('Track Curator compact Event must be an object')
+        fields = {'action', 'base_event_ids', 'primary_track_id', 'owned_unit_roots'}
+        if not fields.issubset(raw_event):
+            raise ValueError('Track Curator compact Event fields differ: '
+                             f'missing={sorted(fields-set(raw_event))}, unexpected={sorted(set(raw_event)-fields)}; '
+                             'each Event needs action, base_event_ids, primary_track_id, owned_unit_roots')
+        # 宽容：单条 Event 多返回的字段直接忽略，必需字段齐全即接受。
+        raw_event = {key: raw_event[key] for key in raw_event if key in fields}
         owned_roots = unit_roots(raw_event.get('owned_unit_roots'), 'ownership')
         if not owned_roots:
             raise ValueError('Track Curator compact Event needs an owned unit')
@@ -449,6 +471,7 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
         if not isinstance(predecessor_ids, list) or any((not isinstance(value, str) or not value.strip() for value in predecessor_ids)):
             raise ValueError('Track Curator base predecessor aliases are invalid')
         candidate = {'event_id': event_id, 'primary_track_id': candidate_track_id, 'session_ids': session_ids, 'source_message_ids': source_ids, 'predecessor_event_ids': [str(value).strip() for value in predecessor_ids], 'blocking_flags': [flag for flag in EVENT_CURATOR_BLOCKING_BASE_FLAGS if bool(raw_candidate.get(flag))],
+                     'append_remaining_chars':append_remaining_chars(raw_candidate),
                      'continuation_allowed':bool(component.get('append_protected') and raw_candidate.get('continuation_allowed'))}
         seen_active_base_ids.add(event_id)
         active_base_candidates.append(candidate)
@@ -501,7 +524,10 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
             base_event_ids.append(base_event_id)
         required_base_count = {'create': 0, 'extend': 1, 'rewrite': 1}.get(action)
         if required_base_count is not None and len(base_event_ids) != required_base_count or (action == 'merge' and len(base_event_ids) < 2):
-            raise ValueError('Track Curator Event action/base cardinality is invalid')
+            expected = str(required_base_count) if required_base_count is not None else 'at least 2'
+            raise ValueError(
+                f'Track Curator Event action/base cardinality is invalid: '
+                f'action={action!r}, base_count={len(base_event_ids)}, expected={expected}')
         selected_candidates: list[dict[str, Any]] = []
         for base_event_id in base_event_ids:
             candidate = base_candidate_lookup.get(base_event_id)
@@ -510,6 +536,10 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
             if candidate['primary_track_id'] != primary_track_id:
                 raise ValueError('Track Curator selected a base from another Track')
             selected_candidates.append(candidate)
+        if action in {'rewrite','merge'} and any(
+                candidate['append_remaining_chars'] == 0 for candidate in selected_candidates):
+            raise ValueError('容量耗尽的旧 Event 只作背景，不参与自动 rewrite/merge；'
+                             '请为新增原话 create，或只选择仍有容量的后续 Event 作为 base。')
         if not isinstance(raw_bindings, list) or not raw_bindings:
             raise ValueError('Track Curator Event needs source bindings')
         bindings: list[dict[str, Any]] = []
@@ -536,11 +566,20 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
         if any((not candidate['blocking_flags'] for candidate in colliding_candidates)):
             raise ValueError('Track Curator source already belongs to an unselected base')
         blocked_candidates = list({candidate['event_id']: candidate for candidate in [*selected_candidates, *colliding_candidates] if candidate['blocking_flags']}.values())
+        capacity_rollover = (action == 'extend' and len(selected_candidates) == 1
+            and selected_candidates[0]['append_remaining_chars'] == 0 and not colliding_candidates
+            and (not selected_candidates[0]['blocking_flags']
+                 or (selected_candidates[0]['continuation_allowed']
+                     and 'forked' not in selected_candidates[0]['blocking_flags']))
+            and not selected_source_ids.intersection(stable_ids)
+            and any(row['activity_role'] == 'primary_activity'
+                    and row['source_message_id'] not in selected_source_ids for row in bindings))
         append_only = (bool(blocked_candidates) and len(selected_candidates) == 1 and action == 'extend'
+                       and selected_candidates[0]['append_remaining_chars'] > 0
                        and not colliding_candidates and selected_candidates[0]['continuation_allowed']
                        and 'forked' not in selected_candidates[0]['blocking_flags']
                        and any(item['source_message_id'] in stable_ids - selected_source_ids for item in bindings))
-        if append_only:
+        if append_only or capacity_rollover:
             blocked_candidates = []
         if blocked_candidates:
             touched_stable_ids = [item['source_message_id'] for item in bindings if item['source_message_id'] in stable_ids]
@@ -568,6 +607,15 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
                 'requested_base_event_ids':base_event_ids,'active_base_event_ids':normalized_base_ids,
                 'blocking_flags':[],'defer_source_message_ids':held})
             continue
+        if (action == 'extend' and selected_candidates[0]['append_remaining_chars'] == 0
+                and not capacity_rollover):
+            held=normalize_disposition([row['source_message_id'] for row in bindings
+                                        if row['source_message_id'] in stable_ids],'defer')
+            defer=normalize_disposition(list(dict.fromkeys([*defer,*held])),'defer')
+            hard_skips.append({'event_ref':event_ref,'reason':'capacity_boundary_unresolved',
+                'requested_base_event_ids':base_event_ids,'active_base_event_ids':normalized_base_ids,
+                'blocking_flags':[],'defer_source_message_ids':held})
+            continue
         # A normal extension preserves the existing prose just like an allowed
         # protected continuation. Rewrite/merge remain explicit full-body work.
         append_only = append_only or action == 'extend'
@@ -577,6 +625,16 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
         events.append({'event_ref': event_ref, 'action': action, 'base_event_ids': normalized_base_ids, 'primary_track_id': primary_track_id, 'reading_track_ids': normalized_reading, 'source_bindings': bindings, 'source_message_ids': [item['source_message_id'] for item in bindings],
                        **({'append_only': True} if append_only else {})})
     requested_stable_ids = set(requested_owners_by_source).intersection(stable_ids)
+    # 宽容：只消解冲突项，不整份放行。Event 优先于 skip/defer；skip 让位给 defer。
+    claimed = requested_stable_ids.intersection(model_skip | model_defer)
+    both = model_skip.intersection(model_defer)
+    if claimed or both:
+        keep_defer = both - claimed
+        skip = normalize_disposition([item for item in skip if item not in claimed], 'skip')
+        defer = normalize_disposition([item for item in defer if item not in claimed], 'defer')
+        defer = normalize_disposition(list(dict.fromkeys([*defer, *sorted(keep_defer)])), 'defer')
+        model_skip = {item for item in model_skip if item not in claimed | both}
+        model_defer = {item for item in model_defer if item not in claimed | both}
     if requested_stable_ids.intersection(model_skip | model_defer) or model_skip.intersection(model_defer):
         raise ValueError('Track Curator accounting dispositions must be disjoint')
     pending_events = list(events)
@@ -603,6 +661,14 @@ def _normalize_expanded_event_curator_output(output: dict[str, Any], component: 
         skip = normalize_disposition([*skip, *closed_defer_ids], 'skip')
         defer = [source_id for source_id in defer if source_id in protected_defer_ids]
     owned_stable_ids = set(owners_by_source).intersection(stable_ids)
+    # 同上：冲突项按 Event > defer > skip 的优先级归位，其它原话保持模型原判。
+    clash = (owned_stable_ids & set(skip)) | (owned_stable_ids & set(defer)) | (set(skip) & set(defer))
+    if clash:
+        only_defer = (set(skip) & set(defer)) - owned_stable_ids
+        skip = normalize_disposition([item for item in skip if item not in clash], 'skip')
+        defer = normalize_disposition([item for item in defer if item not in owned_stable_ids], 'defer')
+        defer = normalize_disposition(list(dict.fromkeys([*defer, *sorted(only_defer)])), 'defer')
+        skip = normalize_disposition([item for item in skip if item not in set(defer)], 'skip')
     if owned_stable_ids.intersection(skip) or owned_stable_ids.intersection(defer) or set(skip).intersection(defer):
         overlap = (owned_stable_ids & set(skip)) | (owned_stable_ids & set(defer)) | (set(skip) & set(defer))
         raise ValueError(f'Track Curator accounting dispositions overlap on source_message_ids={sorted(overlap)}')
@@ -638,9 +704,25 @@ def normalize_event_curator_output(output: dict[str, Any], component: dict[str, 
     review = canonicalize_curator_review(output.get('decision_review'))
     output = {key: value for key, value in output.items() if key != 'decision_review'}
     payload_keys = set(output).difference({'_splitter_provider', '_splitter_model', '_splitter_provider_index', '_track_context_receipt', '_codex_job'})
-    if payload_keys == {'events', 'skip_unit_roots', 'defer_unit_roots'}:
+    compact_keys = {'events', 'skip_unit_roots', 'defer_unit_roots'}
+    expanded_keys = {'events', 'skip_source_message_ids', 'defer_source_message_ids'}
+    if payload_keys == compact_keys:
         output = _expand_compact_event_curator_output(output, component)
+    elif compact_keys.issubset(payload_keys):
+        # 宽容：模型多返回了未声明字段就忽略掉，必需字段齐全即照常展开。
+        for key in sorted(payload_keys - compact_keys):
+            output.pop(key, None)
+        output = _expand_compact_event_curator_output(output, component)
+    elif expanded_keys.issubset(payload_keys):
+        for key in sorted(payload_keys - expanded_keys):
+            output.pop(key, None)
+    else:
+        raise ValueError('Track Curator 模型输出顶层字段不符；模型格式必须包含 '
+                         'events、skip_unit_roots、defer_unit_roots，skip/defer 无内容时也须返回 []；'
+                         f'missing={sorted(compact_keys-payload_keys)}, unexpected={sorted(payload_keys-compact_keys)}。'
+                         'owned_unit_roots/skip_unit_roots/defer_unit_roots 使用输入 unit root；source_message_ids 由 host 展开。')
     normalized = _normalize_expanded_event_curator_output(output, component)
+    review = pipeline_materials.merge_review(review, output, component)
     validate_bridge_owners(output, component, review)
     errors = curator_receipt_errors(review, output, component)
     if errors:
@@ -649,7 +731,35 @@ def normalize_event_curator_output(output: dict[str, Any], component: dict[str, 
     pipeline_materials.attach(review, output, normalized, component)
     normalized['event_admissions'] = pipeline_admission.validate(review, output, component)
     normalized['decision_review'] = review
+    # Finish validating the model's full ownership/material receipt before
+    # changing an impossible append. The inherited review remains auditable.
+    bases = {str(base.get('event_id') or base.get('item_id') or base.get('id')): base
+             for base in component.get('base_event_candidates') or []}
+    for event in normalized['events']:
+        if event['action'] != 'extend':
+            continue
+        base = bases[event['base_event_ids'][0]]
+        if append_remaining_chars(base) > 0:
+            continue
+        event['capacity_recovery'] = {'reason': 'append_capacity_exhausted',
+            'base_event_id': event['base_event_ids'][0], 'requested_action': 'extend',
+            'action': 'create'}
+        event.pop('append_only', None)
+        event['action'] = 'create'
+        inherited = set(base['source_message_ids'])
+        event['base_event_ids'] = []
+        event['source_bindings'] = [row for row in event['source_bindings']
+                                   if row['source_message_id'] not in inherited]
+        event['source_message_ids'] = [row['source_message_id'] for row in event['source_bindings']]
+        if 'source_materials' in event:
+            event['source_materials'] = [row for row in event['source_materials']
+                                        if row['source_message_id'] not in inherited]
     return normalized
+
+
+def append_remaining_chars(base):
+    return max(0, EVENT_BODY_ACCEPT_MAX_CHARS - len(str(base.get('body') or '')) - 2)
+
 
 def attachment_references(message: dict[str, Any]) -> list[dict[str, Any]]:
     metadata = message.get('metadata') if isinstance(message.get('metadata'), dict) else {}
@@ -691,12 +801,14 @@ def event_reading_block_payload(messages: list[dict[str, Any]], context_messages
         item['activity_role'] = activity_roles.get(int(item['source_message_id']), 'primary_activity')
     return payload
 
-def materialized_track_cards_payload(track_cards: list[dict[str, Any]] | None) -> list[dict[str, str]]:
-    cards: list[dict[str, str]] = []
+def materialized_track_cards_payload(track_cards: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
     for raw in track_cards or []:
         if not isinstance(raw, dict):
             raise ValueError('track_cards must contain objects')
         card = {'track_id': str(raw.get('track_id') or '').strip(), 'subject': ' '.join(str(raw.get('subject') or '').split()), 'throughline': ' '.join(str(raw.get('throughline') or '').split())}
+        if 'task_status' in raw:
+            card['task_status'] = raw['task_status']
         cards.append(card)
     return cards
 
@@ -729,11 +841,7 @@ def build_event_writer_prompt(day: str, title: str, messages: list[dict[str, Any
     materialized_track_cards = materialized_track_cards_payload(track_cards)
     agent_rules = materialize_agent_rules('event_writer') if include_role_rules else ''
     rules_block = f'{agent_rules}\n\n' if agent_rules else ''
-    example_quote = '我把工具收进抽屉，关了灯。'
-    # Local fork 回退：这里原本挂了一段真 Event 当风格范例，已删除。
-    # 原因是枚举式举例会让模型往例子的形态上套，而实际对话形态远不止那一种；
-    # 正文形态改由 AGENTS.md「先想清楚这段经历该怎么讲」用判据描述，
-    # 偏差由 validate_event_writer_result 的三条质量校验兜底。
+    example_quote = '把旧书放回书架。'
     sufficient = {'evidence_sufficient': True,
                   'kept_details': [example_quote], 'discarded_details': [],
                   'self_review': {key: True for key in _SELF_REVIEW_KEYS},
@@ -762,47 +870,6 @@ def build_event_writer_repair_prompt(original_prompt, failed_result, violations)
     return original_prompt+f'\n请按原角色规则修正结构或证据校验错误，保留同一 Event 的归属、人物、原话的比喻及不确定程度。正文通常控制在 500 字以内，不必写满；复杂经历可适当超出。优先压缩逐轮复述、技术背景、旁支和重复解释，仍须保留关键依据、不同表达、真实转折与实际落点。不要新增事实、改变边界，或按词句数量机械改写文风。重新核对 self_review。\n'+json.dumps({'violations':violations,'failed_result':failed_result},ensure_ascii=False)
 
 
-def _compact_len(text: str) -> int:
-    """净字数（只计字母数字与汉字），供篇幅比例校验与重合检测用同一口径。"""
-    return sum(1 for ch in str(text or '') if ch.isalnum() or '\u4e00' <= ch <= '\u9fff')
-
-
-def _overlap_ngrams(text: str, size: int) -> set[str]:
-    compact = ''.join(ch for ch in str(text or '') if ch.isalnum() or '\u4e00' <= ch <= '\u9fff')
-    if len(compact) < size:
-        return set()
-    return {compact[i:i + size] for i in range(len(compact) - size + 1)}
-
-
-def _overlap_ratio(subject: str, reference: str, size: int) -> float | None:
-    """subject 的 size-gram 有多大比例在 reference 里逐字出现过。样本不足返回 None。"""
-    subject_grams = _overlap_ngrams(subject, size)
-    reference_grams = _overlap_ngrams(reference, size)
-    if not subject_grams or not reference_grams:
-        return None
-    return len(subject_grams & reference_grams) / len(subject_grams)
-
-
-def _writer_owned_text(owned_sources: list[dict[str, Any]] | None) -> str:
-    """从 owned_sources 拼出 owned 原文。兼容两种形态：
-    reading block payload（text / evidence_role）与 pipeline request 的原始 message（content）。"""
-    parts: list[str] = []
-    for item in owned_sources or []:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get('evidence_role') or 'owned') != 'owned':
-            continue
-        for key in ('content', 'text'):
-            value = item.get(key)
-            if isinstance(value, str) and value.strip():
-                parts.append(value)
-                break
-        for extra in item.get('evidence_texts') or []:
-            if isinstance(extra, str) and extra.strip():
-                parts.append(extra)
-    return '\n'.join(parts)
-
-
 def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dict[str, Any]] | None = None) -> list[str]:
     canonicalize_claim_group_ids(result)
     title = str(result.get('title') or '').strip()
@@ -816,7 +883,10 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
         violations.append('evidence_sufficient 缺失或不是布尔值')
     if evidence_sufficient is False:
         if title or body or kept or discarded:
-            violations.append('evidence_sufficient=false 时不得返回 Event 内容')
+            nonempty=[name for name,value in (('title',title),('event_draft',body),
+                       ('kept_details',kept),('discarded_details',discarded)) if value]
+            violations.append('evidence_sufficient=false 时不得返回 Event 内容：'
+                              f'非空字段={nonempty}；title/event_draft 必须为空字符串，kept_details/discarded_details 必须为空数组。')
         if not isinstance(review, dict):
             violations.append('self_review 缺失或不是对象')
         if ('claim_groups' in result or 'sentence_evidence' in result) and (result.get('claim_groups') != [] or result.get('sentence_evidence') != []):
@@ -830,38 +900,6 @@ def validate_event_writer_result(result: dict[str, Any], owned_sources: list[dic
         violations.append(f'正文超过容错上限 {EVENT_BODY_ACCEPT_MAX_CHARS} 字：{len(body)} 字；请按通常 {EVENT_WRITER_GUIDE_MAX_CHARS} 字的软预算重新取舍压缩，复杂经历可适当超出')
     if len(kept) > 12:
         violations.append(f'kept_details 最多 12 项：{len(kept)}')
-    # —— 质量硬校验（Local fork 追加）——
-    if body:
-        source_text = _writer_owned_text(owned_sources)
-        source_chars = _compact_len(source_text)
-        if source_chars >= EVENT_BODY_OVERLAP_MIN_SOURCE_CHARS:
-            overlap = _overlap_ratio(body, source_text, EVENT_BODY_OVERLAP_NGRAM)
-            if overlap is not None and overlap > EVENT_BODY_SOURCE_OVERLAP_MAX:
-                violations.append(
-                    f'正文与 owned 原文逐字重合 {overlap:.0%}，超过 {EVENT_BODY_SOURCE_OVERLAP_MAX:.0%} 上限；'
-                    '这是把原文换了一遍人称的搬运稿，不是改写。请重组句式与语序，'
-                    '把叮嘱／判断放回它发生的场景，并保住第一人称主体。')
-        if source_chars:
-            body_chars = _compact_len(body)
-            if body_chars > source_chars:
-                violations.append(
-                    f'正文净字数 {body_chars} 字，超过 owned 原文净字数 {source_chars} 字；'
-                    '原文只有几条时不能靠注水扩写凑成相当篇幅，请只保留原文真实承载的内容。')
-            elif (source_chars >= EVENT_BODY_RATIO_MIN_SOURCE_CHARS
-                  and body_chars > source_chars * EVENT_BODY_SOURCE_RATIO_MAX):
-                violations.append(
-                    f'正文净字数 {body_chars} 字，是 owned 原文 {source_chars} 字的 {body_chars / source_chars:.0%}，'
-                    f'超过 {EVENT_BODY_SOURCE_RATIO_MAX:.0%} 上限；只有几条原文时更不能逐条展开，请按真实信息量取舍。')
-        if '我' not in body:
-            violations.append(
-                '正文通篇没有第一人称主体（未出现“我”）；'
-                '第一人称正文必须有视角锚点，不能写成无主语的旁白。')
-        for detail in discarded:
-            inflow = _overlap_ratio(body, detail, EVENT_BODY_OVERLAP_NGRAM)
-            if inflow is not None and inflow > EVENT_DISCARDED_OVERLAP_MAX:
-                violations.append(
-                    f'discarded_details 里的内容又出现在正文里（重合 {inflow:.0%}）：{detail[:30]}；'
-                    'discarded_details 只能列彻底删去的内容。')
     if not isinstance(result.get('discarded_details'), list):
         violations.append('discarded_details 缺失或不是数组')
     if not isinstance(review, dict):

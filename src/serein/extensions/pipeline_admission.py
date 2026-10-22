@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import re
+import time
 
 from .pipeline_materials import substantive_ids
 
@@ -114,8 +115,46 @@ def validate(review, output, component):
     return result
 
 
-def apply_gate(plan, component):
-    """Short open activities remain pending; an explicitly closed short activity is skipped."""
+GATE_DEFERRAL_LIMIT = 3
+# 一条 Event 至少需要几轮完整问答。上游默认 2 轮，但多数原话本身就是一轮问答，
+# 稳定单元冻结后不会再合并，2 轮门槛等于永久 defer。这里降为 1。
+MIN_ROUNDS = 1
+
+
+def ensure_gate_table(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS pipeline_gate_deferrals(
+        raw_id INTEGER PRIMARY KEY,deferrals INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)""")
+
+
+def exhausted_ids(conn, raw_ids, limit=GATE_DEFERRAL_LIMIT):
+    """已经因轮次不足被 defer 达到上限的原话。"""
+    keys = [int(key) for key in raw_ids]
+    if not keys:
+        return set()
+    try:
+        ensure_gate_table(conn)
+        marks = ",".join("?" for _ in keys)
+        rows = conn.execute(f"SELECT raw_id FROM pipeline_gate_deferrals WHERE deferrals>=? AND raw_id IN ({marks})",
+                            [limit, *keys]).fetchall()
+    except Exception:
+        return set()
+    return {int(row[0]) for row in rows}
+
+
+def record_gate_outcome(conn, deferred_ids, resolved_ids):
+    """defer 累积计数；已结算/已跳过的清零。"""
+    ensure_gate_table(conn)
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for raw_id in {int(key) for key in deferred_ids}:
+        conn.execute("""INSERT INTO pipeline_gate_deferrals(raw_id,deferrals,updated_at) VALUES(?,1,?)
+                        ON CONFLICT(raw_id) DO UPDATE SET deferrals=deferrals+1,updated_at=excluded.updated_at""",
+                     (raw_id, now))
+    for raw_id in {int(key) for key in resolved_ids}:
+        conn.execute("DELETE FROM pipeline_gate_deferrals WHERE raw_id=?", (raw_id,))
+
+
+def apply_gate(plan, component, exhausted=frozenset()):
+    """Short open activities remain pending; tool traffic is consumed; exhausted units are released."""
     if not component.get('writer_round_gate'):
         return plan
     result = deepcopy(plan)
@@ -131,10 +170,25 @@ def apply_gate(plan, component):
             {row['role'] for row in unit} == {'user'}
             and owned.intersection(int(row['id']) for row in unit)
             for unit in exchanges(scope.values())))
-        disposition = ('defer' if waiting_reply else 'write' if rounds >= 2 else
-                       'skip' if admission['closed_by'] else 'defer')
+        visible = [row for row in scope.values()
+                   if int(row['id']) in owned and _visible(row)]
+        forced = bool(owned & set(exhausted))
+        if not visible:
+            # 纯工具流量（tool_call / tool_result）本质是协议，不是对话，凑不出轮次。
+            # 继续 defer 会让整条队列永久堵在这一格，按协议语义直接消费掉。
+            disposition = 'skip'
+        elif forced:
+            disposition = 'write'
+        elif waiting_reply:
+            disposition = 'defer'
+        elif rounds >= MIN_ROUNDS:
+            disposition = 'write'
+        elif admission['closed_by']:
+            disposition = 'skip'
+        else:
+            disposition = 'defer'
         receipts.append({'event_ref': event['event_ref'], 'rounds': rounds,
-                         'minimum': 2, 'disposition': disposition})
+                         'minimum': MIN_ROUNDS, 'disposition': disposition, 'forced': forced})
         if disposition == 'write':
             accepted.append(event)
         else:

@@ -1,5 +1,5 @@
 {
-  "generation": "user-own-v1-20261015",
+  "generation": "user-own-v2-20261015",
   "provenance": {
     "adaptation": "Exemplars are the deployment owner's own utterances, mined from the owner's chat log (2026-06-27..2026-09-30) and machine-labelled by the router. Route roles, actions and thresholds are unchanged from the shipped file. Re-embedded with the owner's own embedding profile; threshold recalibration is still pending."
   },
@@ -25,7 +25,7 @@
       "label": "此刻闲聊",
       "action": "skip",
       "enabled": true,
-      "threshold": 0.6,
+      "threshold": 0.65,
       "examples": [
         "那现在想聊点什么",
         "想和你聊聊天",
@@ -48,7 +48,7 @@
       "label": "当前状态与感受",
       "action": "skip",
       "enabled": true,
-      "threshold": 0.6,
+      "threshold": 0.65,
       "examples": [
         "现在晚上胃口好小，吃一点就撑了",
         "我不饿，刚吃过东西(¯﹃¯)",
@@ -108,7 +108,7 @@
       "name": "技术闲聊",
       "label": "技术闲聊",
       "action": "skip",
-      "enabled": true,
+      "enabled": false,
       "threshold": 0.58,
       "examples": [
         "重新调用一下试试",

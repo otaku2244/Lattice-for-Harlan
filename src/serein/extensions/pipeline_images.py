@@ -140,9 +140,10 @@ def freeze_task_images(database,batch_id,images,previous=(),*,missing=None):
         else:
             try:
                 body,mime=image_bytes(image['url'])
-            except MissingOriginalImage:
+            except (ValueError, OSError, http.client.HTTPException) as error:
                 if missing is None:raise
-                missing.append({'source_message_id':key[0],'position':key[1],'reason':'original_missing'})
+                missing.append({'source_message_id':key[0],'position':key[1],
+                                'reason':'original_missing' if isinstance(error,MissingOriginalImage) else 'original_unavailable'})
                 continue
             sha=hashlib.sha256(body).hexdigest()
             new.append((batch_id,key[0],key[1],sha,mime,body))
@@ -191,61 +192,24 @@ def verify_images(images):
             raise ValueError('冻结图片摘要不匹配')
 
 
-def _transcription_index(row, reference):
-    """Accept the canonical {input_image,...} row or an echoed host receipt row.
-
-    Pretranscribed requests show the model the host transcription receipts
-    (source_message_id/position/sha256/evidence_role/text), so a compliant
-    answer may echo those keys instead of the bare input_image index. Both are
-    resolved back to a position in the reference list before binding.
-    """
-    keys = set(row)
-    if keys == {'input_image', 'text'}:
-        return row['input_image']
-    if keys == {'input_image', 'text', 'unreadable'}:
-        return row['input_image']
-    if keys == {'source_message_id', 'position', 'text', 'unreadable'}:
-        match = [index for index, image in enumerate(reference, 1)
-                 if image.get('source_message_id') == row['source_message_id']
-                 and image.get('position') == row['position']]
-        if len(match) == 1:
-            return match[0]
-        raise ValueError('图片转录引用的出处不在本次输入中')
-    if keys == {'source_message_id', 'position', 'sha256', 'evidence_role', 'text', 'unreadable'}:
-        match = [index for index, image in enumerate(reference, 1)
-                 if image.get('source_message_id') == row['source_message_id']
-                 and image.get('position') == row['position']
-                 and image.get('sha256') == row['sha256']
-                 and image.get('evidence_role') == row['evidence_role']]
-        if len(match) == 1:
-            return match[0]
-        raise ValueError('图片转录引用的出处与本次输入不一致')
-    raise ValueError('图片转录字段无效；出处由 host 绑定')
-
-
-def bind_transcriptions(output, images, reference=None):
+def bind_transcriptions(output, images):
     rows = output.get('image_transcriptions', [])
-    if reference is None:
-        reference = images
-        verify_images(images)
-    elif not isinstance(reference, list):
-        raise ValueError('图片转录基准清单无效')
-    if not isinstance(rows, list) or len(rows) != len(reference):
+    if not isinstance(rows, list) or len(rows) != len(images):
         raise ValueError('每张输入图片必须恰有一份 image_transcriptions 转录')
-    bound = {}
+    bound = {}; verify_images(images)
     for row in rows:
-        if isinstance(row, dict) and isinstance(row.get('text'), str) and 'unreadable' not in row:
+        if isinstance(row, dict) and set(row) == {'input_image', 'text'} and isinstance(row.get('text'), str):
             row = {**row, 'unreadable': not bool(row['text'].strip())}
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or set(row) != {'input_image', 'text', 'unreadable'}:
             raise ValueError('图片转录字段无效；出处由 host 绑定')
-        index = _transcription_index(row, reference)
-        if type(index) is not int or not 1 <= index <= len(reference) or index in bound:
+        index = row['input_image']
+        if type(index) is not int or not 1 <= index <= len(images) or index in bound:
             raise ValueError('图片转录序号重复或超出输入范围')
         if not isinstance(row['text'], str) or len(row['text']) > 40000 or type(row['unreadable']) is not bool:
             raise ValueError('图片转录文字或 unreadable 类型无效')
         if not row['text'].strip() and not row['unreadable']:
             raise ValueError('空白转录必须标记 unreadable')
-        image = reference[index - 1]
+        image = images[index - 1]
         bound[index] = {**{key: image[key] for key in ('source_message_id', 'position', 'sha256', 'evidence_role')},
                         'text': row['text'], 'unreadable': row['unreadable']}
     return [bound[index] for index in sorted(bound)]

@@ -5,6 +5,10 @@ from datetime import datetime, timedelta, timezone
 from ..core.store import digest, encode
 from . import pipeline_latest as latest
 
+# 跨客户端（手机/网页）上报顺序与真实时间不保证一致，容许小幅时钟倒挂。
+# 只放宽时间边界，id 边界仍然严格；真正的未来材料仍会被拦下。
+ANCHOR_CLOCK_SKEW = timedelta(minutes=10)
+
 
 def scope_for(source, session):
     return digest(encode([source, session]))[:20]
@@ -22,13 +26,14 @@ def assert_before(store, cards, before_id):
     current=store.conn.execute('SELECT created_at FROM raw_events WHERE id=?',(before_id,)).fetchone()
     if current is None:raise p.RoutingRecoveryError('Pre-routing source anchor is missing')
     reference=datetime.fromisoformat(current[0].replace('Z','+00:00'))
+    ceiling=reference+ANCHOR_CLOCK_SKEW
     for card in cards:
         anchors=card.get('recent_source_message_ids')
         if not isinstance(anchors,list) or not anchors:
             raise p.RoutingRecoveryError('Pre-routing Track has no proved source anchors: '+card['track_id'])
         for key in anchors:
             row=store.conn.execute('SELECT created_at FROM raw_events WHERE id=?',(key,)).fetchone() if type(key) is int else None
-            if row is None or key>=before_id or datetime.fromisoformat(row[0].replace('Z','+00:00'))>reference:
+            if row is None or key>=before_id or datetime.fromisoformat(row[0].replace('Z','+00:00'))>ceiling:
                 raise p.RoutingRecoveryError('Pre-routing Track contains future source material: '+card['track_id'])
 
 
@@ -49,12 +54,23 @@ def load_tracks(store, source, session, before_id, message, *, lookback_days=3):
     lower=reference-timedelta(days=lookback_days)
     metadata=json.loads(current['metadata_json'] or '{}')
     boundary=(metadata.get('runtime',''),metadata.get('workspace_root',''))
+    scope=scope_for(source,session)
+    # Only a successfully published explicit rebuild can retire earlier
+    # unprovable history, and only for its own scope.
+    cutoff=store.conn.execute("SELECT MAX(CAST(json_extract(old.result_json,"
+        "'$.recovery_downgrade.history_before_id') AS INTEGER)) FROM pipeline_batches old "
+        "JOIN pipeline_batches fresh ON fresh.id=json_extract(old.result_json,'$.replacement_batch_id') "
+        "WHERE old.scope=? AND old.status='superseded_repair' AND fresh.status IN ('routed','done') AND "
+        "CAST(json_extract(old.result_json,'$.recovery_downgrade.history_before_id') AS INTEGER)<=? AND "
+        "json_extract(old.result_json,'$.recovery_downgrade.confirmed_by')='REBUILD_PIPELINE_BATCH'",
+        (scope,before_id)).fetchone()[0] or 0
     anchors={}
     rows=store.conn.execute('SELECT r.*,p.route_json FROM pipeline_routes p JOIN raw_events r ON r.id=p.raw_id '
         'WHERE r.source=? AND r.id<? AND julianday(r.created_at)>=julianday(?) '
         'AND julianday(r.created_at)<=julianday(?) ORDER BY r.id DESC',
         (source,before_id,lower.isoformat(),reference.isoformat()))
     for row in rows:
+        if row['id'] < cutoff:continue
         stamp=datetime.fromisoformat(row['created_at'].replace('Z','+00:00'))
         if stamp.tzinfo is None:stamp=stamp.replace(tzinfo=timezone.utc)
         if not lower<=stamp.astimezone(timezone.utc)<=reference:continue
@@ -65,7 +81,6 @@ def load_tracks(store, source, session, before_id, message, *, lookback_days=3):
             previous=anchors.get(track_id)
             if previous is None or (stamp,row['id'])>(previous[0],previous[1]['id']):
                 anchors[track_id]=(stamp,row)
-    scope=scope_for(source,session)
     cards=[]
     for row in store.conn.execute('SELECT id,card_json,scope FROM pipeline_tracks ORDER BY id'):
         anchor=anchors.get(row['id'])

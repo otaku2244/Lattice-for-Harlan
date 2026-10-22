@@ -27,6 +27,9 @@ export function ModelSettings({page,summaryRequest=0,onOpenPipeline,onOpenCatalo
   recallThreshold,setRecallThreshold,candidateThresholdDraft,setCandidateThresholdDraft,
   passageDraft,setPassageDraft}) {
   const [config,setConfig]=useState(null);
+  const [indexDraft,setIndexDraft]=useState({});
+  const embeddingBatchSize=indexDraft.embedding_batch_size ?? config?.recall?.embedding_batch_size ?? 16;
+  const embeddingConcurrency=indexDraft.embedding_concurrency ?? config?.recall?.embedding_concurrency ?? 1;
   const passagesEnabled=passageDraft.passages_enabled ?? config?.recall?.passages_enabled ?? false;
   const passageMinChars=passageDraft.passage_min_chars ?? config?.recall?.passage_min_chars ?? 500;
   const threshold=recallThreshold ?? config?.recall?.direct_threshold ?? 0.65;
@@ -97,12 +100,14 @@ export function ModelSettings({page,summaryRequest=0,onOpenPipeline,onOpenCatalo
         throw new Error('候选池上限需填写 6 到 100 之间的整数。');
       if(passageMinChars===''||!Number.isInteger(Number(passageMinChars))||Number(passageMinChars)<1||Number(passageMinChars)>100000)
         throw new Error('长文起切字数需填写 1 到 100000 之间的整数。');
+      for(const [value,max,label] of [[embeddingBatchSize,64,'向量每批条数'],[embeddingConcurrency,4,'向量请求并发数']])
+        if(value===''||!Number.isInteger(Number(value))||Number(value)<1||Number(value)>max)throw new Error(`${label}需填写 1 到 ${max} 之间的整数。`);
       const result=await instanceSettings({expected_version:config.settings_version,models,upstreams,assignments:config.assignments,pipeline:Object.fromEntries(Object.entries(config.pipeline).filter(([key])=>key!=='auto_enabled')),dream:config.dream,
-        recall:{...passageDraft,...('passage_min_chars' in passageDraft?{passage_min_chars:Number(passageMinChars)}:{}),
+        recall:{...passageDraft,...Object.fromEntries(Object.entries(indexDraft).map(([key,value])=>[key,key==='index_catch_up'?value:Number(value)])),...('passage_min_chars' in passageDraft?{passage_min_chars:Number(passageMinChars)}:{}),
           ...(recallThreshold!==null?{direct_threshold:Number(threshold)}:{}),
           ...Object.fromEntries(Object.entries(candidateThresholdDraft).map(([key,value])=>[key,Number(value)]))},upstream:{
         writer_enabled:config.upstream.writer_enabled,memory_enabled:config.upstream.memory_enabled,operit_enabled:config.upstream.operit_enabled}});
-      setConfig(result);setRecallThreshold(null);setCandidateThresholdDraft({});setPassageDraft({});setStatus("设置已保存。");
+      setConfig(result);setIndexDraft({});setRecallThreshold(null);setCandidateThresholdDraft({});setPassageDraft({});setStatus("设置已保存。");
     } catch(error){setStatus(error.message);}
     finally{setBusy(false);}
   }
@@ -175,6 +180,16 @@ export function ModelSettings({page,summaryRequest=0,onOpenPipeline,onOpenCatalo
         <input type="number" min="1" max="100000" step="1" disabled={busy} value={passageMinChars}
           onChange={event=>setPassageDraft(current=>({...current,passage_min_chars:event.target.value}))}/></label>
       <small>有效正文超过此字数才分段，汉字、字母和标点均按字符计。保存后应用于新写入或正文修改的记忆；已有分段保留，不自动全库重切。开启后可点“建立 / 补齐检索索引”一次性补齐旧记忆缺失的分段。</small>
+      <details className="settings-disclosure"><summary>索引处理速度</summary>
+        <p>默认每批最多 16 条、同时 1 个向量请求。按提供方的批量与限流要求调整，正文和长文分段共用这些设置；保存后生效。</p>
+        <label className="settings-field">向量每批条数<input type="number" min="1" max="64" step="1" disabled={busy} value={embeddingBatchSize}
+          onChange={event=>setIndexDraft(current=>({...current,embedding_batch_size:event.target.value}))}/></label>
+        <label className="settings-field">向量请求并发数<input type="number" min="1" max="4" step="1" disabled={busy} value={embeddingConcurrency}
+          onChange={event=>setIndexDraft(current=>({...current,embedding_concurrency:event.target.value}))}/></label>
+        <label className="settings-toggle"><span><strong>加快后台索引追赶</strong><small>有积压时，每轮最多处理 500 条待办，并连续推进；关闭时沿用每轮 100 条、间隔 5 秒。失败暂停和显式恢复规则保持不变。</small></span>
+          <input type="checkbox" role="switch" disabled={busy} checked={indexDraft.index_catch_up ?? config.recall?.index_catch_up ?? false}
+            onChange={event=>setIndexDraft(current=>({...current,index_catch_up:event.target.checked}))}/></label>
+      </details>
       <RecallThresholdSettings config={config} draft={recallThreshold} setDraft={setRecallThreshold}
         candidateDraft={candidateThresholdDraft} setCandidateDraft={setCandidateThresholdDraft} disabled={busy}
         onSaved={result=>setConfig(current=>({...current,settings_version:result.settings_version,recall:result.recall}))}/>
@@ -197,6 +212,7 @@ export function ModelSettings({page,summaryRequest=0,onOpenPipeline,onOpenCatalo
       <small>“完整提示词字符上限”是最终模型调用保护，可按所用模型上下文提高到 4000000；修改后下一次继续当前批次即可生效。</small>
       <small>只并发 Curator 已冻结计划后的第一轮 Event Writer；Router、Curator、补读与最终结算保持串行。Agent 模式仍一次领取一个 Writer 任务。默认 1。</small>
       <small>默认回看 3 天（72 小时）：归线读取这段时间内实际归入过原话的 Track，不依赖聊天窗口。旧 Event 不按时间过期；同一 Track 超过 8 条 active leaves 时只 defer 该 Track，避免截断候选后误写。天数修改对新批次生效，已冻结任务保持原材料。</small>
+      <label className="settings-toggle"><span><strong>精简归线候选（实验）</strong><small>候选卡不附旧原话，本轮原话和最近上下文保留。可减少输入量；省略指代较多时可能影响续接判断。</small></span><input type="checkbox" role="switch" checked={config.pipeline.router_compact_cards ?? false} onChange={event=>setConfig(current=>({...current,pipeline:{...current.pipeline,router_compact_cards:event.target.checked}}))}/></label>
       <label className="settings-toggle"><span><strong>检索归线候选（实验）</strong><small>默认关闭，完整带入回看范围内的旧卡。开启后，近线完整带入，较早的卡由程序检索补充；可能漏接或改变分线。</small></span><input type="checkbox" role="switch" checked={config.pipeline.track_candidates_enabled ?? false} onChange={event=>setConfig(current=>({...current,pipeline:{...current.pipeline,track_candidates_enabled:event.target.checked}}))}/></label>
       {config.pipeline.track_candidates_enabled && <>
         <label className="settings-field"><span>直接带入最近活动的 Track</span><select value={config.pipeline.track_direct_hours ?? 12} onChange={event=>setConfig(current=>({...current,pipeline:{...current.pipeline,track_direct_hours:Number(event.target.value)}}))}>{[12,24,48,72].map(hours=><option key={hours} value={hours}>最近 {hours} 小时</option>)}</select></label>

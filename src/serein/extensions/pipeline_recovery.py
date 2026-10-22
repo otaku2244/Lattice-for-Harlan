@@ -16,22 +16,11 @@ MAX_HISTORY_JOBS = 256
 SOURCE_STATES = ('routed', 'done', 'superseded_input_budget')
 MESSAGE_KEYS = ('id', 'source', 'source_event_id', 'original_session_id',
                 'session_id', 'role', 'content', 'created_at')
-# Revisions that shipped the lossy compaction (snapshot kept only routing_result).
-# A done batch written by one of them can still be proved from its frozen Router
-# requests, so it must not be rejected merely because the code moved on.
+# rc65 before the replay-seed fix, with Windows CRLF or release LF files.
+# Only its completed, compacted producers qualify; unfinished work stays held.
 COMPACTED_ROUTER_REVISIONS = frozenset({
     '4fc0c763905e28e35af100115e6b265817662d38d896e0eec0cb3b20f3f3f679',
     '0a8a6382fe8f0e6e02e2f165c69c179cce0925669c59d30677f5a8e673099620',
-    '4c339f1961c2dfb30a4c31897d5ec949bec49e8b9d58e74fcb7203842e9691fc',
-    '044993417e8e26be2b943ed1e541099058e4c73bfd026b2038fcf1e1d69e1788',
-    'dd5328f37e2adc760173e18e523f729fcc7c27524d0b17f872508f95a8dc6b6b',
-    '5a81453b626212636fef17c7ade917d358f2d569128273e8b32e7603912c8cc8',
-    '210cdb25c1952604d3af5b20ac4217f3290a33c9d12ec7e4831366e05b4ad53e',
-    '7a40ccb74787f89c8b6febd3cb3ca47463634e211574eb555d377d275680b389',
-    'ac569d40999dad51f1aee6417869f6220cb2d150f418c8f89cb51ed8ccaaa9be',
-    '4c9b564c2c85732ad4679d0f53cbab44ce1a459d4d95570b0dbd27a72a31e3aa',
-    '712d0a535cf9788e575979339cd5cd5a3c272ab4e6e0de5bfb9a9085f6bb8502',
-    '215f36e85918b6e469f7cce1c77c909ea961850432da4ce98f723d9a818dc209',
 })
 
 
@@ -74,22 +63,26 @@ def _frames(database, batch):
     original = json.loads(batch['input_json'])
     legacy_compacted = (batch['status'] == 'done' and original.get('task_snapshot_compacted') is True
         and all(key not in original for key in ('tracks', 'recent', 'next_track_ordinal', 'input_policy')))
-    # A snapshot that still carries its whole pre-Track seed can be proved by
-    # replaying it under today's code: assert_router_state compares for exact
-    # equality, so a changed algorithm fails closed instead of slipping through.
-    # Only lossy snapshots depend on the shipped-revision allowlist below.
-    complete_seed = all(key in original for key in ('tracks', 'recent', 'next_track_ordinal', 'input_policy'))
-    if (original.get('contract') != p.CONTRACT
-            or (original.get('runtime_revision') != p.runtime_revision()
-                and not complete_seed
-                and not (legacy_compacted and original.get('runtime_revision') in COMPACTED_ROUTER_REVISIONS))
-            or original.get('scope') != batch['scope']):
-        raise p.RoutingRecoveryError('route producer has an incompatible frozen contract')
-    if not _same_scope(original, original.get('routing_messages', [])):
-        raise p.RoutingRecoveryError('route producer messages do not belong to its frozen scope')
     jobs = p.router_jobs(database, batch)
     if len(jobs) > MAX_HISTORY_JOBS:
         raise p.RoutingRecoveryError('route history exceeds bounded job recovery limit')
+    # 本地补丁：只看当前错误。快照只要带着完整的 pre-Track seed 就可以按今天的代码重放，
+    # 由 assert_router_state 逐项精确比对，算法变了会 fail closed，不会悄悄放过。
+    # 不采用官方的逐请求 routing_frame 判定——那会因单个 job 缺证据就废掉整个历史批次。
+    complete_seed = all(key in original for key in ('tracks', 'recent', 'next_track_ordinal', 'input_policy'))
+    current_revision = p.runtime_revision()
+    if (original.get('contract') != p.CONTRACT
+            or (original.get('runtime_revision') != current_revision
+                and not complete_seed
+                and not (legacy_compacted and original.get('runtime_revision') in COMPACTED_ROUTER_REVISIONS))
+            or original.get('scope') != batch['scope']):
+        raise p.RoutingRecoveryError('route producer has an incompatible frozen contract: '
+            f"producer={batch['id']}; status={batch['status']}; "
+            f"contract={original.get('contract')!r}; expected_contract={p.CONTRACT!r}; "
+            f"runtime_revision={original.get('runtime_revision')!r}; current_runtime_revision={current_revision!r}; "
+            f"scope={original.get('scope')!r}; expected_scope={batch['scope']!r}")
+    if not _same_scope(original, original.get('routing_messages', [])):
+        raise p.RoutingRecoveryError('route producer messages do not belong to its frozen scope')
     if not jobs:
         result = original.get('routing_result')
         if result is None:
@@ -349,10 +342,20 @@ def _rebuild(database, batch_id):
             store.conn.execute('DELETE FROM pipeline_route_provenance WHERE raw_id=?', (frozen['id'],))
         # Retain only the original pre-routing input, never old ownership/plans.
         fresh = {key: deepcopy(data[key]) for key in ('contract', 'runtime_revision', 'input_policy', 'messages', 'parked',
-                 'routing_messages', 'tracks', 'scope', 'source', 'recent', 'day') if key in data}
+                 'routing_messages', 'tracks', 'scope', 'source', 'recent', 'day', 'recovery_downgrade') if key in data}
         fresh['contract'] = p.CONTRACT
         fresh['runtime_revision'] = p.runtime_revision()
         fresh['tracks'] = [c for c in fresh['tracks'] if p._card_is_complete(c)]
+        previous_result = json.loads(batch['result_json'] or '{}')
+        history_error = data.get('routing_evidence_error') or previous_result.get('reason', '')
+        if data.get('routing_evidence_error') or 'No bounded historical pre-routing Track frame:' in history_error:
+            # The existing explicit rebuild starts a new history segment for
+            # this scope. Later windows must not reintroduce the same gap.
+            fresh['tracks'] = []
+            fresh['recent'] = []
+            fresh['recovery_downgrade'] = {'reason': history_error,
+                'history_before_id': min(m['id'] for m in routing),
+                'confirmed_by': 'REBUILD_PIPELINE_BATCH', 'source_batch_id': batch_id}
         fresh['next_track_ordinal'] = max(data.get('next_track_ordinal', 1),
                                          tracks.next_ordinal(data['scope'], reserved))
         fresh['ignore_route_cache'] = True
@@ -361,8 +364,10 @@ def _rebuild(database, batch_id):
         route_only=batch_id.startswith('route:')
         replacement = ('route:' if route_only else 'pipeline:')+digest(encode([batch_id, uuid4().hex]))
         audit = {'status': 'superseded_repair', 'replacement_batch_id': replacement,
-                 'confirmed_at': now(), 'previous_result': json.loads(batch['result_json'] or '{}'),
+                 'confirmed_at': now(), 'previous_result': previous_result,
                  'discarded_route_cache': cache}
+        if fresh.get('recovery_downgrade'):
+            audit['recovery_downgrade'] = fresh['recovery_downgrade']
         store.conn.execute("UPDATE pipeline_batches SET status='superseded_repair',result_json=? WHERE id=?",
                            (encode(audit), batch_id))
         store.conn.execute('INSERT INTO pipeline_batches(id,scope,input_json,status) VALUES (?,?,?,?)',
