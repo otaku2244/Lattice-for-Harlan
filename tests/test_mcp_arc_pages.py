@@ -3,13 +3,13 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.arc_pages import page, PAGE_CHARS, dump, size
-from serein.api.read_text import arc_materials_text
-from serein.api.http import create_app
-from serein.application import Application
-from serein.config import Settings
-from serein.core import Store
-from serein.core.store import Conflict
+from lattice.api.arc_pages import page, PAGE_CHARS, dump, size
+from lattice.api.read_text import arc_materials_text
+from lattice.api.http import create_app
+from lattice.application import Application
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.store import Conflict
 from test_gateway_contract import arc_upload_database
 
 

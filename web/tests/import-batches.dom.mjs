@@ -18,7 +18,7 @@ const job={id:'synthetic-upload',filename:'Synthetic history.json',format:'messa
 const requests=[];
 globalThis.fetch=async(url,options={})=>{
   let data;
-  if(url==='/__serein/imports')data={items:[job],tagging:{}};
+  if(url==='/__lattice/imports')data={items:[job],tagging:{}};
   else if(url.endsWith('/continue')){
     const args=JSON.parse(options.body);requests.push(args);
     job.task={status:'queued',arguments:args};data=job.task;
@@ -27,7 +27,7 @@ globalThis.fetch=async(url,options={})=>{
   }else throw new Error('Unexpected request '+url);
   return {ok:true,json:async()=>structuredClone(data)};
 };
-const directory=await mkdtemp(join(tmpdir(),'serein-import-dom-'));
+const directory=await mkdtemp(join(tmpdir(),'lattice-import-dom-'));
 try{
   const output=await build({stdin:{contents:`import React,{act} from 'react';import {createRoot} from 'react-dom/client';import {ConversationImport} from './src/components/ConversationImport.jsx';export {act};export function mount(){const root=createRoot(document.getElementById('root'));root.render(<ConversationImport/>);return root;}`,resolveDir:process.cwd(),loader:'jsx'},jsx:'automatic',bundle:true,platform:'node',format:'esm',write:false,define:{'process.env.NODE_ENV':'"development"'}});
   const path=join(directory,'bundle.mjs');await writeFile(path,output.outputFiles[0].text);

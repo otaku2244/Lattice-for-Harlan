@@ -3,10 +3,10 @@ import copy
 import json
 import pytest
 from test_public_features import settings, ingest, output_for
-from serein.core.store import Store, Conflict
-from serein.deployment import save_settings, read_settings
-from serein.extensions import pipeline as p, pipeline_latest as latest
-from serein.extensions.pipeline_images import freeze_images, bind_transcriptions, verify_images, verify_transcriptions
+from lattice.core.store import Store, Conflict
+from lattice.deployment import save_settings, read_settings
+from lattice.extensions import pipeline as p, pipeline_latest as latest
+from lattice.extensions.pipeline_images import freeze_images, bind_transcriptions, verify_images, verify_transcriptions
 
 PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
 
@@ -33,7 +33,7 @@ def test_null_context_requests_save_and_resume_without_rereading(settings,monkey
             with Store(settings.database,read_only=True) as store:
                 request=json.loads(store.conn.execute('SELECT request_json FROM pipeline_jobs WHERE output_json IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()[0])
             return {'choices':[{'message':{'content':json.dumps(result_for(request))}}]}
-        monkeypatch.setattr('serein.model_runtime.complete',complete)
+        monkeypatch.setattr('lattice.model_runtime.complete',complete)
     result=asyncio.run(p.advance(settings.database,include_recent=True))
     if mode=='agent':
         while result['status']=='awaiting_agent':
@@ -86,7 +86,7 @@ def test_null_final_result_after_one_context_read(settings,monkeypatch,role):
 def test_three_stage_image_chain_preserves_bytes_transcription_and_raw_sources(settings,monkeypatch,mode):
     import base64
     import hashlib
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'image','session_id':'one','role':'user','text':'The book title','created_at':'2025-01-01T00:00:00Z',
          'metadata':{'attachments':[{'kind':'image','url':PNG}]}},
@@ -115,7 +115,7 @@ def test_three_stage_image_chain_preserves_bytes_transcription_and_raw_sources(s
             request=json.loads(store.conn.execute('SELECT request_json FROM pipeline_jobs WHERE output_json IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()[0])
         if request.get('images'):
             assert request['images'][0]['url']=='[frozen task image]'
-            from serein.extensions.pipeline_images import hydrate_request_images
+            from lattice.extensions.pipeline_images import hydrate_request_images
             request=hydrate_request_images(settings.database,request['batch_id'],request)
         if request.get('transcription_only'):assert payload['messages'][1]['content'][1]['image_url']['url']==PNG
         if request['role']=='event_writer':
@@ -124,7 +124,7 @@ def test_three_stage_image_chain_preserves_bytes_transcription_and_raw_sources(s
         if request['role']=='event_writer' and seen.count('event_writer')==1:
             result['sentence_evidence'][0]['source_spans'][0]['quote']='not in original'
         return {'choices':[{'message':{'content':json.dumps(result)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     result=asyncio.run(p.advance(settings.database,include_recent=True))
     if mode=='agent':
         for task in ['track_router','image_transcription','event_curator','event_writer']:
@@ -214,7 +214,7 @@ def test_api_configuration_conflicts_and_execution_freezes_all_stage_models(sett
         with Store(settings.database,read_only=True) as store:
             request=json.loads(store.conn.execute('SELECT request_json FROM pipeline_jobs WHERE output_json IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()[0])
         return {'choices':[{'message':{'content':json.dumps(output_for(request['role'],request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     ingest(settings);assert asyncio.run(p.advance(settings.database,include_recent=True))['events']==1
     assert calls==['first']*3
     ingest(settings,2);assert asyncio.run(p.advance(settings.database,include_recent=True))['events']==1
@@ -227,7 +227,7 @@ def test_explicit_api_requires_all_models_and_agent_never_calls_api(settings,mon
     save_settings(settings.database,{'models':[{'id':'local','model':'example','base_url':'http://127.0.0.1:9/v1'}],
         'assignments':{role:'local' for role in p.ROLES},'pipeline':{'execution_mode':'agent'}})
     async def fail(*args):raise AssertionError('Agent must not call API')
-    monkeypatch.setattr('serein.model_runtime.complete',fail)
+    monkeypatch.setattr('lattice.model_runtime.complete',fail)
     ingest(settings);task=asyncio.run(p.advance(settings.database,include_recent=True))
     assert task['status']=='awaiting_agent' and task['request']['execution']['model']=='example'
 
@@ -235,7 +235,7 @@ def test_explicit_api_requires_all_models_and_agent_never_calls_api(settings,mon
 def test_writer_bounded_reread_gets_new_context_images_without_owning_them(settings,monkeypatch):
     ingest(settings);seen=[];context_ids=[]
     def reread(database,component,query):
-        from serein.compat.raw_archive import raw_archive
+        from lattice.compat.raw_archive import raw_archive
         result=raw_archive(settings).ingest([{
             'source_event_id':'earlier-image','session_id':'earlier','role':'user','text':'An earlier title',
             'created_at':'2024-12-31T00:00:00Z',
@@ -269,7 +269,7 @@ def test_writer_bounded_reread_gets_new_context_images_without_owning_them(setti
 
 
 def test_completed_task_media_expires_after_seven_days_but_raw_archive_and_text_remain(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'image','session_id':'one','role':'user','text':'The book title','created_at':'2025-01-01T00:00:00Z','metadata':{'attachments':[{'kind':'image','url':PNG}]}},
         {'source_event_id':'reply','session_id':'one','role':'assistant','text':'Agreed','created_at':'2025-01-01T00:01:00Z'}],source='synthetic')
@@ -299,7 +299,7 @@ def test_agent_adapter_returns_actual_mcp_image_blocks(monkeypatch):
 
 
 def test_remote_images_pin_validated_address_and_reject_internal_targets(monkeypatch):
-    from serein.extensions import pipeline_images as images
+    from lattice.extensions import pipeline_images as images
     import base64
     connected=[];requests=[]
     monkeypatch.setattr(images.socket,'getaddrinfo',lambda *args:[(2,1,6,'',('8.8.8.8',80))])
@@ -323,7 +323,7 @@ def test_remote_images_pin_validated_address_and_reject_internal_targets(monkeyp
 
 
 def test_remote_images_follow_bounded_revalidated_redirects(monkeypatch):
-    from serein.extensions import pipeline_images as images
+    from lattice.extensions import pipeline_images as images
     import base64
     addresses={'short.test':'8.8.8.8','cdn.test':'1.1.1.1'}
     connected=[];requests=[];responses={
@@ -349,7 +349,7 @@ def test_remote_images_follow_bounded_revalidated_redirects(monkeypatch):
 
 
 def test_remote_image_redirects_reject_private_targets_and_loops(monkeypatch):
-    from serein.extensions import pipeline_images as images
+    from lattice.extensions import pipeline_images as images
     connected=[]
     def address(host,port):
         return [(2,1,6,'',(('127.0.0.1' if host=='private.test' else '8.8.8.8'),port))]
@@ -374,7 +374,7 @@ def test_remote_image_redirects_reject_private_targets_and_loops(monkeypatch):
 
 
 def test_remote_image_redirect_limit_is_enforced(monkeypatch):
-    from serein.extensions import pipeline_images as images
+    from lattice.extensions import pipeline_images as images
     requests=[]
     monkeypatch.setattr(images.socket,'getaddrinfo',lambda host,port:[(2,1,6,'',('8.8.8.8',port))])
     monkeypatch.setattr(images.socket,'create_connection',lambda *args,**kwargs:None)

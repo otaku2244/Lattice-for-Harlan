@@ -3,10 +3,10 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index
+from lattice.api.http import create_app
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index
 
 
 @pytest.fixture

@@ -1,16 +1,16 @@
 import {useRef,useState} from 'react';
 
-const config={mcpServers:{serein_events:{command:'python',args:['/absolute/path/serein/scripts/event_agent_mcp.py'],
-  env:{SEREIN_AGENT_URL:'http://127.0.0.1:8011',SEREIN_AGENT_TOKEN:'填写你的 Serein 访问密钥'}}}};
-const runner={SEREIN_WRITER_ENABLED:'1',SEREIN_WRITER_MODEL:'你的 agent 使用的模型名',
-  SEREIN_WRITER_COMMAND:'["python", "/absolute/path/your-agent-runner.py"]'};
+const config={mcpServers:{lattice_events:{command:'python',args:['/absolute/path/lattice/scripts/event_agent_mcp.py'],
+  env:{LATTICE_AGENT_URL:'http://127.0.0.1:8011',LATTICE_AGENT_TOKEN:'填写你的 Lattice 访问密钥'}}}};
+const runner={LATTICE_WRITER_ENABLED:'1',LATTICE_WRITER_MODEL:'你的 agent 使用的模型名',
+  LATTICE_WRITER_COMMAND:'["python", "/absolute/path/your-agent-runner.py"]'};
 
 export function AgentGuide({initial='event',label='如何接入 Agent'}) {
   const dialog=useRef(null),[tab,setTab]=useState(initial),[status,setStatus]=useState('');
   function download(){
     const payload=tab==='event'?config:runner;
     const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download=tab==='event'?'serein-agent-mcp.example.json':'serein-writer-agent-env.example.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const link=document.createElement('a');link.href=url;link.download=tab==='event'?'lattice-agent-mcp.example.json':'lattice-writer-agent-env.example.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     setStatus('配置示例已下载。请替换路径、地址和占位值后使用。');
   }
   return <>
@@ -24,8 +24,8 @@ export function AgentGuide({initial='event',label='如何接入 Agent'}) {
       {tab==='event'?<>
         <p>模型留空表示这一步等待你的 Agent。需要完成一次接入配置，之后 Agent 可以领取任务、提交结果并继续下一步。</p>
         <ol>
-          <li>保持 Serein HTTP 后端运行。在发行包源码目录、使用同一 Python 环境安装 MCP 支持：<code>python -m pip install ".[mcp]"</code>。</li>
-          <li>把下面配置加入 Agent 客户端的 MCP 设置。路径指向发行包里的 <code>scripts/event_agent_mcp.py</code>，地址填后端地址，密钥填 Serein 访问密钥。</li>
+          <li>保持 Lattice HTTP 后端运行。在发行包源码目录、使用同一 Python 环境安装 MCP 支持：<code>python -m pip install ".[mcp]"</code>。</li>
+          <li>把下面配置加入 Agent 客户端的 MCP 设置。路径指向发行包里的 <code>scripts/event_agent_mcp.py</code>，地址填后端地址，密钥填 Lattice 访问密钥。</li>
           <li>先在“功能”页开启“自动摘要 Agent 工具”并保存，再重新连接客户端的 MCP。让 Agent 调用 <code>pipeline_next</code>，完整读取返回的 <code>request.prompt</code> 与角色规则；完成后用 <code>pipeline_submit(job_id, output)</code> 提交，再领取下一步。</li>
           <li>手动立即整理时传 <code>include_recent: true</code>；未完成的对话仍会等待。Agent 客户端需支持 MCP 工具调用；留空不会自行启动一个 Agent。</li>
         </ol>

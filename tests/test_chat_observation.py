@@ -3,9 +3,9 @@ import time
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from serein.api.http import create_app
-from serein.chat_state import recent_deliveries
-from serein.core.store import Store, encode
+from lattice.api.http import create_app
+from lattice.chat_state import recent_deliveries
+from lattice.core.store import Store, encode
 from test_public_settings import deployment, configure
 
 
@@ -28,7 +28,7 @@ def test_disabled_recall_is_visible_after_reply_and_restart(deployment,monkeypat
         assert [row['session_id'] for row in history(client)] == ['main', 'legacy']
         assert history(client)[0]['payload']['request_status'] == 'upstream_pending'
         return answer()
-    monkeypatch.setattr('serein.api.chat.complete',complete)
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
     query='时光代理人看到哪了？'
     response=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':query}]})
     assert response.status_code==200
@@ -36,7 +36,7 @@ def test_disabled_recall_is_visible_after_reply_and_restart(deployment,monkeypat
     rows=history(reopened)
     assert len(rows)==2 and rows[1]['payload']['query']=='old imported record'
     row=rows[0];p=row['payload']
-    assert str(row['id'])==response.headers['x-serein-observation-id']
+    assert str(row['id'])==response.headers['x-lattice-observation-id']
     assert row['session_id']=='main' and p['query']==query
     assert p['request_status']=='completed' and p['recall_state']=='disabled'
     assert p['injected_bucket_ids']==[]
@@ -63,18 +63,18 @@ def test_existing_user_requests_are_visible_but_tool_rows_are_hidden(deployment)
 @pytest.mark.parametrize('mode',['selected','no_match','skip'])
 def test_recall_and_delivery_agree_without_recording_full_context(deployment,monkeypatch,mode):
     settings,client=deployment;configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready',lambda _:True)
+    monkeypatch.setattr('lattice.configured_models.memory_ready',lambda _:True)
     selected=['scene:synthetic'] if mode=='selected' else []
     def recall(*args,**kwargs):
         assert 28 < kwargs['deadline_at'] - time.monotonic() <= 30
         return {'selected_refs':selected,'context':'private-source-body' if selected else '',
                 'cards':[{'id':selected[0],'title':'A scene','source_kind':'scene','score':.9,'text':'private-source-body'}] if selected else [],
                 'routing':{'route':'reading','action':'skip' if mode=='skip' else 'recall','score':.8}}
-    monkeypatch.setattr('serein.application.Services.recall',recall)
+    monkeypatch.setattr('lattice.application.Services.recall',recall)
     async def complete(*args,**kwargs):return answer()
-    monkeypatch.setattr('serein.api.chat.complete',complete)
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
     query='A current question'
-    client.post('/v1/chat/completions',json={'messages':[{'role':'system','content':'private-system-prompt'},{'role':'user','content':query}], 'serein':{'memory':True}}).raise_for_status()
+    client.post('/v1/chat/completions',json={'messages':[{'role':'system','content':'private-system-prompt'},{'role':'user','content':query}], 'lattice':{'memory':True}}).raise_for_status()
     row=history(client)[0];p=row['payload']
     assert p['recall_state']=={'skip':'skipped'}.get(mode,mode)
     assert p['prepared_ids']==p['injected_bucket_ids']==selected
@@ -88,11 +88,11 @@ def test_recall_and_delivery_agree_without_recording_full_context(deployment,mon
 
 def test_upstream_failure_does_not_claim_injection_or_advance_cooldown(deployment,monkeypatch):
     settings,client=deployment;configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready',lambda _:True)
-    monkeypatch.setattr('serein.application.Services.recall',lambda *a,**k:{'selected_refs':['scene:s'],'context':'selected context','cards':[]})
+    monkeypatch.setattr('lattice.configured_models.memory_ready',lambda _:True)
+    monkeypatch.setattr('lattice.application.Services.recall',lambda *a,**k:{'selected_refs':['scene:s'],'context':'selected context','cards':[]})
     async def complete(*args,**kwargs):raise httpx.ConnectError('secret upstream URL must not be logged')
-    monkeypatch.setattr('serein.api.chat.complete',complete)
-    r=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'A failed question'}],'serein':{'memory':True}})
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
+    r=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'A failed question'}],'lattice':{'memory':True}})
     assert r.status_code==502
     assert history(client)[0]['payload']['request_status']=='failed'
     assert history(client)[0]['payload']['injected_bucket_ids']==[]
@@ -104,7 +104,7 @@ def test_upstream_failure_does_not_claim_injection_or_advance_cooldown(deploymen
 
 def test_not_ready_is_recorded_without_claiming_delivery(deployment):
     _,client=deployment;configure(client)
-    r=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'Not ready'}],'serein':{'memory':True}})
+    r=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'Not ready'}],'lattice':{'memory':True}})
     assert r.status_code==409
     assert history(client)[0]['payload']['request_status']=='failed'
     assert client.get('/v1/host/deliveries').json()['items']==[]
@@ -126,7 +126,7 @@ def test_stream_completion_is_required_for_observed_delivery(deployment,monkeypa
 def test_tool_continuation_does_not_create_a_recall_observation(deployment,monkeypatch):
     _,client=deployment;configure(client)
     async def complete(*args,**kwargs):return answer()
-    monkeypatch.setattr('serein.api.chat.complete',complete)
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
     messages=[{'role':'user','content':'The original question'},
               {'role':'assistant','tool_calls':[{'id':'call-a','type':'function','function':{'name':'lookup','arguments':'{}'}}]},
               {'role':'tool','tool_call_id':'call-a','content':'Tool result'}]
@@ -137,13 +137,13 @@ def test_tool_continuation_does_not_create_a_recall_observation(deployment,monke
 
 def test_tool_continuation_reuses_context_without_repeating_recall_or_delivery(deployment,monkeypatch):
     settings,client=deployment;configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready',lambda _:True)
+    monkeypatch.setattr('lattice.configured_models.memory_ready',lambda _:True)
     calls=[]
     def recall(*args,**kwargs):
         calls.append(args[1])
         return {'selected_refs':['scene:synthetic'],'context':'Synthetic remembered fact',
                 'cards':[{'id':'scene:synthetic','title':'A scene','source_kind':'scene'}]}
-    monkeypatch.setattr('serein.application.Services.recall',recall)
+    monkeypatch.setattr('lattice.application.Services.recall',recall)
     responses=[]
     async def complete(*args,**kwargs):
         responses.append(1)
@@ -151,16 +151,16 @@ def test_tool_continuation_reuses_context_without_repeating_recall_or_delivery(d
             return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[
                 {'id':'call-a','type':'function','function':{'name':'lookup','arguments':'{}'}}]}}]}
         return answer()
-    monkeypatch.setattr('serein.api.chat.complete',complete)
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
     user={'role':'user','content':'The original question'}
-    first=client.post('/v1/chat/completions',json={'messages':[user],'serein':{'memory':True}})
+    first=client.post('/v1/chat/completions',json={'messages':[user],'lattice':{'memory':True}})
     first.raise_for_status()
     messages=[user,first.json()['choices'][0]['message'],{'role':'tool','tool_call_id':'call-a','content':'Tool result'}]
-    second=client.post('/v1/chat/completions',json={'messages':messages,'serein':{'memory':True}})
+    second=client.post('/v1/chat/completions',json={'messages':messages,'lattice':{'memory':True}})
     second.raise_for_status()
     assert calls==['The original question']
-    assert second.headers['x-serein-context-replayed']=='true'
-    assert second.headers['x-serein-observation-id']==''
+    assert second.headers['x-lattice-context-replayed']=='true'
+    assert second.headers['x-lattice-observation-id']==''
     assert len(history(client))==1
     assert len(client.get('/v1/host/deliveries').json()['items'])==1
     assert recent_deliveries(settings.database,'main')==['scene:synthetic']
@@ -172,11 +172,11 @@ def test_tool_continuation_reuses_context_without_repeating_recall_or_delivery(d
 ])
 def test_recall_failure_diagnostics_survive_successful_chat(deployment,monkeypatch,diagnostic):
     _,client=deployment;configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready',lambda _:True)
-    monkeypatch.setattr('serein.application.Services.recall',lambda *a,**k:{**diagnostic,'candidate_retrieval':{'candidate_count':6}})
+    monkeypatch.setattr('lattice.configured_models.memory_ready',lambda _:True)
+    monkeypatch.setattr('lattice.application.Services.recall',lambda *a,**k:{**diagnostic,'candidate_retrieval':{'candidate_count':6}})
     async def complete(*args,**kwargs):return answer()
-    monkeypatch.setattr('serein.api.chat.complete',complete)
-    client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'A recall question'}],'serein':{'memory':True}}).raise_for_status()
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
+    client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'A recall question'}],'lattice':{'memory':True}}).raise_for_status()
     p=history(client)[0]['payload']
     assert p['recall_diagnostics']==diagnostic and p['candidate_count']==6
     assert p['request_status']=='completed' and p['injected_bucket_ids']==[]

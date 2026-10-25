@@ -7564,3 +7564,124 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
   .settings-panel__body--slides > [role="tabpanel"] { padding: 24px 18px 34px; }
 }
 @media (prefers-reduced-motion: reduce) { .settings-panel__body--slides { scroll-behavior: auto; } }
+
+
+/* ════════════════════════════════════════════════════════════════
+   事件详情卡片化（2026-10-23）
+   对标 Scene 详情的 .scene-cues / .scene-evidence：
+   同一套边框、底色、内边距、标题层级与左侧竖线的原文条目。
+
+   原状况：.fact-event-detail 在样式表里没有任何布局规则，
+   正文与原文都是裸块，文字直接贴容器边缘；
+   .event-mailbox-select 的样式只写在邮箱页的 CSS 里
+   （pages/event-mailbox-page.css），而该文件只有邮箱页 import，
+   所以在记忆页打开事件详情时「打开沉淀」是裸链接。
+   ════════════════════════════════════════════════════════════════ */
+
+.fact-event-detail__card,
+.fact-event-detail__sources {
+  display: grid;
+  gap: 0;
+  margin: 28px 0 0;
+  padding: 20px 22px;
+  border: 1px solid rgba(102, 119, 112, 0.14);
+  background: rgba(246, 249, 247, 0.72);
+}
+
+.fact-event-detail__card > header,
+.fact-event-detail__sources > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 0 0 11px;
+  border-bottom: 1px solid rgba(102, 119, 112, 0.12);
+}
+
+.fact-event-detail__card > header h3,
+.fact-event-detail__sources > header h3 {
+  margin: 0;
+  color: #36413d;
+  font-family: var(--font-editorial-cjk);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.fact-event-detail__card > header span,
+.fact-event-detail__sources > header span {
+  color: #9aa39f;
+  font-family: var(--font-editorial);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.fact-event-detail__card > p {
+  margin: 0;
+  color: #3f4a46;
+  font-family: var(--font-editorial-cjk);
+  font-size: 15px;
+  line-height: 1.95;
+  /* 长串英文 / URL / 工具标签不断行会把 grid 列撑宽，被 overflow-x: clip 裁掉 */
+  overflow-wrap: anywhere;
+}
+
+/* 原文条目：左侧竖线 + 白底，与 scene-evidence__list article 一致 */
+.fact-event-detail__sources article {
+  margin: 0 0 8px;
+  padding: 14px 16px;
+  border-top: 0;
+  border-left: 2px solid #9eaaa5;
+  background: rgba(255, 255, 255, 0.82);
+}
+.fact-event-detail__sources article:last-child { margin-bottom: 0; }
+
+.fact-event-detail__sources article > div {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.fact-event-detail__sources article > div time { margin-left: auto; }
+
+.fact-event-detail__sources article p {
+  margin: 7px 0 0;
+  color: #5b6762;
+  font-size: 12px;
+  line-height: 1.78;
+  overflow-wrap: anywhere;
+}
+
+/* 「打开沉淀」按钮：不依赖邮箱页的样式文件 */
+.event-mailbox-select { margin: 22px 0 0; }
+
+.event-mailbox-select a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #d8dedb;
+  border-radius: 4px;
+  background: #fff;
+  color: #68736f;
+  font-family: var(--font-editorial-cjk);
+  font-size: 11px;
+  text-decoration: none;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.event-mailbox-select a:hover { border-color: #aeb7b3; color: #29332f; }
+
+/* 窄屏下操作按钮被压成单字竖排（原有问题）—— 允许换行但按钮内部不断字 */
+.fact-event-detail .scene-detail__edit-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+}
+.fact-event-detail .scene-detail__edit-actions button { white-space: nowrap; }
+
+/* grid 子项默认 min-width: auto，长串会把列撑宽；
+   配合 .scene-detail 的 overflow-x: clip 就表现为「右边显示不全」 */
+.fact-event-detail__card > *,
+.fact-event-detail__sources > * { min-width: 0; }

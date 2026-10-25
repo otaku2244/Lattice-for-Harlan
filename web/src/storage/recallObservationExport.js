@@ -8,7 +8,7 @@ import {
 } from "./recallSimulationTraining.js";
 
 export const RECALL_OBSERVATION_EXPORT_SCHEMA_VERSION = 6;
-export const RECALL_OBSERVATION_EXPORT_TYPE = "serein.basement.recall-observation-training-export";
+export const RECALL_OBSERVATION_EXPORT_TYPE = "lattice.basement.recall-observation-training-export";
 export const RECALL_OBSERVATION_DATASET_KIND = "recall_observation_and_reranker_calibration";
 
 const validActions = new Set(["skip", "recall"]);
@@ -475,7 +475,7 @@ export function buildRecallObservationTrainingExport(
     export_type: RECALL_OBSERVATION_EXPORT_TYPE,
     dataset_kind: RECALL_OBSERVATION_DATASET_KIND,
     generated_at: generatedAt,
-    review_storage_key: "serein.basement.recall-observation-review.v1",
+    review_storage_key: "lattice.basement.recall-observation-review.v1",
     privacy: {
       includes: [
         "user_query",

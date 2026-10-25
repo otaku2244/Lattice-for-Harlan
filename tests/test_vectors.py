@@ -3,10 +3,10 @@ import sqlite3
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index, Search
-from serein.recall.vectors import fill_vectors, coverage
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index, Search
+from lattice.recall.vectors import fill_vectors, coverage
 
 
 @pytest.fixture

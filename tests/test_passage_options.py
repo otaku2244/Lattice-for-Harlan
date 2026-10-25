@@ -3,13 +3,13 @@ import sqlite3
 
 import pytest
 
-from serein.application import Application
-from serein.config import Settings
-from serein.core import Store
-from serein.deployment import save_settings
-from serein.recall.index import build_index
-from serein.recall.passage_layouts import layout_path, prepare_layouts
-from serein.recall.passages import prepare_passages, fill_passages
+from lattice.application import Application
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.deployment import save_settings
+from lattice.recall.index import build_index
+from lattice.recall.passage_layouts import layout_path, prepare_layouts
+from lattice.recall.passages import prepare_passages, fill_passages
 
 
 def cached(settings, key):
@@ -26,7 +26,7 @@ def test_write_prepares_once_without_embedding_and_updates_only_changed_body(tmp
     result=services.write('first','save',request)
     key=result['id']; original=cached(settings,key)
     assert original[1]==500 and len(json.loads(original[2]))>1
-    from serein.recall import passages
+    from lattice.recall import passages
     split=passages.slices
     monkeypatch.setattr(passages,'slices',lambda *a,**kw:pytest.fail('An unchanged body was split again'))
     assert services.write('first','save',request)['id']==key
@@ -47,8 +47,8 @@ def test_write_prepares_once_without_embedding_and_updates_only_changed_body(tmp
 def test_disabled_passages_neither_split_nor_call_embedding(tmp_path, monkeypatch):
     settings=Settings(tmp_path/'memory.db',writable=True)
     with Store(settings.database) as store:store.create('s','scene','标题','原文。'*200)
-    monkeypatch.setattr('serein.recall.passages.slices',lambda *a,**kw:pytest.fail('Disabled feature split a body'))
-    monkeypatch.setattr('serein.recall.passages.EmbeddingClient',lambda *a,**kw:pytest.fail('Disabled feature contacted a provider'))
+    monkeypatch.setattr('lattice.recall.passages.slices',lambda *a,**kw:pytest.fail('Disabled feature split a body'))
+    monkeypatch.setattr('lattice.recall.passages.EmbeddingClient',lambda *a,**kw:pytest.fail('Disabled feature contacted a provider'))
     assert prepare_layouts(settings,['s'])['status']=='disabled'
     assert prepare_passages(settings)['status']=='disabled'
     assert fill_passages(settings)['status']=='disabled'

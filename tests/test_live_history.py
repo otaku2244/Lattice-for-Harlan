@@ -1,5 +1,5 @@
 from test_live_clients import live
-from serein.core.store import Store, digest, encode
+from lattice.core.store import Store, digest, encode
 
 
 def test_read_archives_keeps_deleted_dream_as_metadata_only(live):

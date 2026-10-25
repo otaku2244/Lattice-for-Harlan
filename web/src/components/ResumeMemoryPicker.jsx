@@ -17,7 +17,7 @@ export function ResumeMemoryPicker({ids,disabled,onChange}) {
         if(selectedOnly&&!draft.length){setPage({items:[],total:0});return;}
         const params=new URLSearchParams({kind:selectedOnly?'':kind,q:query,date,offset:String(offset)});
         if(selectedOnly)draft.forEach(id=>params.append('ids',id));
-        const response=await fetch('/__serein/settings/resume-candidates?'+params,{signal:abort.signal});
+        const response=await fetch('/__lattice/settings/resume-candidates?'+params,{signal:abort.signal});
         if(!response.ok)throw new Error('暂时没有读到记忆，请重试。');
         const result=await response.json();if(!abort.signal.aborted)setPage(result);
       } catch(error) {if(!abort.signal.aborted)setError(error.message);}
@@ -59,7 +59,7 @@ export async function searchLinkCandidates({kind,query='',date='',offset=0,signa
   if (!Object.hasOwn(linkKindLabels,kind)) throw new Error('请选择一种材料类型。');
   const params=new URLSearchParams({purpose:'link',kind,q:query,date,offset:String(offset),limit:'30'});
   signal?.throwIfAborted();
-  const response=await fetchImpl('/__serein/settings/resume-candidates?'+params,{signal,cache:'no-store'});
+  const response=await fetchImpl('/__lattice/settings/resume-candidates?'+params,{signal,cache:'no-store'});
   const result=await response.json().catch(()=>null);
   signal?.throwIfAborted();
   if (!response.ok) throw new Error('查找暂不可用，请确认后端已更新后重试。');

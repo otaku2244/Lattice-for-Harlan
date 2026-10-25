@@ -75,7 +75,7 @@ async function readWindowShadowResponse(response) {
 
 export async function loadWindowShadows() {
   try {
-    const liveResponse = await fetch("/__serein/live/window-shadows", {
+    const liveResponse = await fetch("/__lattice/live/window-shadows", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",

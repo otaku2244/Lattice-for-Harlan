@@ -9,7 +9,7 @@ const controls = [...document.querySelectorAll('.tools button')];
 const embedded = window.parent !== window;
 
 function reveal() {
-  if (embedded) window.parent.postMessage({ type: 'serein:garden-ready' }, location.origin);
+  if (embedded) window.parent.postMessage({ type: 'lattice:garden-ready' }, location.origin);
 }
 
 async function openGarden() {

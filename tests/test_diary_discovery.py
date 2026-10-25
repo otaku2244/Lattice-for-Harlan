@@ -5,11 +5,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from serein.api.mcp import create_server
-from serein.application import Application
-from serein.compat.diaries import Diaries
-from serein.config import Settings
-from serein.core.store import Store
+from lattice.api.mcp import create_server
+from lattice.application import Application
+from lattice.compat.diaries import Diaries
+from lattice.config import Settings
+from lattice.core.store import Store
 
 
 PRIVATE = False

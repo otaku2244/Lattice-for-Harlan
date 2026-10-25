@@ -3,8 +3,8 @@ import { defaultDiaryEntries } from "../data/diary.js";
 import { people } from "../data/awake.js";
 import { readLocalPreference } from "./awakeStore.js";
 
-const diaryStorageKey = "serein.diary.entries.v1";
-const diarySnapshotStorageKey = "serein.diary.snapshot.v1";
+const diaryStorageKey = "lattice.diary.entries.v1";
+const diarySnapshotStorageKey = "lattice.diary.snapshot.v1";
 const supplementalSeedIds = new Set();
 
 function splitParagraphs(content) {
@@ -58,7 +58,7 @@ function projectLiveEntry(entry) {
     revision: Number(entry.revision || 1),
     sourceId: String(entry.source_id || entry.metadata?.legacy_entry_id || ""),
     emotionTags: Array.isArray(entry.emotion_tags) ? entry.emotion_tags : [],
-    sourceKind: "serein-diary-live-readonly",
+    sourceKind: "lattice-diary-live-readonly",
   };
 }
 
@@ -84,7 +84,7 @@ function mergeSavedDiaryState(liveEntries, savedEntries) {
 
 export function readDiaryUserIdentity() {
   return {
-    author: readLocalPreference("serein.awake.name.user", people[0].name),
+    author: readLocalPreference("lattice.awake.name.user", people[0].name),
     role: "user",
   };
 }
@@ -134,7 +134,7 @@ function normalizeEntry(entry, fallbackIdentity) {
 
 export async function loadDiarySnapshot() {
   try {
-    let response = await fetch("/__serein/live/diaries", {
+    let response = await fetch("/__lattice/live/diaries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
@@ -170,7 +170,7 @@ export async function deleteDiaryEntry(entry) {
   const liveId = String(entry?.id || "").match(/^diary-vps-(\d+)$/u)?.[1];
   if (!liveId) return { status: "deleted", scope: "local" };
 
-  const response = await fetch(`/__serein/live/diaries/${liveId}`, {
+  const response = await fetch(`/__lattice/live/diaries/${liveId}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
   });
@@ -184,7 +184,7 @@ export async function deleteDiaryEntry(entry) {
 export async function saveDiaryEntry(entry, draft) {
   const liveId = String(entry?.id || "").match(/^diary-vps-(\d+)$/u)?.[1];
   const response = await fetch(
-    liveId ? `/__serein/live/diaries/${liveId}` : "/__serein/live/diaries/entry",
+    liveId ? `/__lattice/live/diaries/${liveId}` : "/__lattice/live/diaries/entry",
     {
       method: liveId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -209,7 +209,7 @@ export async function addDiaryComment(entry, content) {
     throw new Error("这篇日记还没有进入共同日记库，请先编辑并保存，再添加评论。");
   }
 
-  const response = await fetch(`/__serein/live/diaries/${liveId}/comments`, {
+  const response = await fetch(`/__lattice/live/diaries/${liveId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
@@ -226,7 +226,7 @@ export async function deleteDiaryComment(entry, commentId) {
   const liveCommentId = String(commentId || "").match(/^diary-comment-vps-(\d+)$/u)?.[1];
   if (!liveId || !liveCommentId) return { status: "deleted", scope: "local" };
 
-  const response = await fetch(`/__serein/live/diaries/${liveId}/comments/${liveCommentId}`, {
+  const response = await fetch(`/__lattice/live/diaries/${liveId}/comments/${liveCommentId}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
   });

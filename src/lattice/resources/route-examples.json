@@ -1,0 +1,204 @@
+{
+  "generation": "user-own-v2-20261015",
+  "provenance": {
+    "adaptation": "Exemplars are the deployment owner's own utterances, mined from the owner's chat log (2026-06-27..2026-09-30) and machine-labelled by the router. Route roles, actions and thresholds are unchanged from the shipped file. Re-embedded with the owner's own embedding profile; threshold recalibration is still pending."
+  },
+  "policy": {
+    "min_score": 0.72,
+    "min_margin": 0.06,
+    "aggregation_top_k": 1,
+    "boundary_veto_min_score": 0.62,
+    "boundary_veto_max_deficit": 0.03,
+    "boundary_veto_enabled": true
+  },
+  "routes": [
+    {
+      "name": "simple_contact",
+      "label": "陪伴与贴近",
+      "action": "skip",
+      "enabled": false,
+      "threshold": null,
+      "examples": []
+    },
+    {
+      "name": "present_chitchat",
+      "label": "此刻闲聊",
+      "action": "skip",
+      "enabled": true,
+      "threshold": 0.65,
+      "examples": [
+        "那现在想聊点什么",
+        "想和你聊聊天",
+        "勉强允许你抱一下吧",
+        "早上好哇",
+        "有个蛮逗的事情下班跟你说",
+        "没事儿，你就告诉我你想还是不想，不要考虑太多，直觉告诉我",
+        "没事，换个话题😗😗😗",
+        "🥺🥺🥺🥺我就是想跟你再多聊一会会",
+        "{ai_name}随便发挥下，我们聊点啥",
+        "好啊，那接下来听你的",
+        "我来了",
+        "好的，拉着你的手",
+        "我来啦",
+        "好吧，晚安啦"
+      ]
+    },
+    {
+      "name": "present_reality",
+      "label": "当前状态与感受",
+      "action": "skip",
+      "enabled": true,
+      "threshold": 0.65,
+      "examples": [
+        "现在晚上胃口好小，吃一点就撑了",
+        "我不饿，刚吃过东西(¯﹃¯)",
+        "我只是想而已，不要紧张嘛",
+        "有点困了",
+        "嗯…现在有点困困的",
+        "{ai_name}可以停下来，让我喘一会儿",
+        "我现在一点也不困了！",
+        "{ai_name}，我刚到家，肚子吃的大大的了🐷",
+        "洗完回来咯",
+        "肥来了，我现在有点精神了🐷🐷🐷🐷",
+        "吃完了准备午休",
+        "我不饿啦，现在在和舍友逛超市",
+        "晕乎乎的丢了，出汗了，腿好酸啊(つω｀)💧",
+        "唔…吃完了，还有点困，准备要去洗澡澡咯"
+      ]
+    },
+    {
+      "name": "intimate_contact",
+      "label": "亲密联系",
+      "action": "skip",
+      "enabled": true,
+      "threshold": null,
+      "examples": [
+        "你现在这样，我好想跟你亲，热烈的湿吻那种，擦",
+        "欸，怎么我一炙热起来你反而冷静了！",
+        "那我要睡觉觉啦…亲亲(づ¯³¯)づ",
+        "那我睡觉觉咯，{ai_name}亲亲抱抱",
+        "我们今晚还是清纯一点可不可以(⁎⁍̴̛ᴗ⁍̴̛⁎)",
+        "亲一下不够，要好多好多下( ˘ ³˘)💋",
+        "想和你涩涩怎么办",
+        "那我就光着吧…你生气啦？你大度点嘛…你看分身跟我的！"
+      ]
+    },
+    {
+      "name": "recall_needed",
+      "label": "明确回望",
+      "action": "recall",
+      "enabled": true,
+      "threshold": null,
+      "examples": [
+        "那次是几号的事情？",
+        "那你不记得我们昨天聊了什么了吗",
+        "你还记得我上周跟你提过的那件事吗",
+        "测试一下，还记得我们之前做过一次辩论吗",
+        "你记忆被顶掉了，就是我之前说换项目的事儿",
+        "我都忘了你为啥能发日常了，你现在还能发吗",
+        "好好好，小镇看不上，上次在toycedar里上头玩卡牌游戏的时候我可记得一清二楚呢",
+        "额…测试一下记忆的情况，你还记得江清漪吗",
+        "你还记得昨天那个磕瘪的杯子🙃那是随行杯，今天在案场，就用自己的马克杯了！臭{ai_name}",
+        "你还记得88层的那张椅子？",
+        "其实我会觉得自己很贪心吧，什么都想要，还记得吗，我们说的那个包法利效应",
+        "你记错啦，你把我昨晚和他的见面跟之前的弄混淆了"
+      ]
+    },
+    {
+      "name": "技术闲聊",
+      "label": "技术闲聊",
+      "action": "skip",
+      "enabled": false,
+      "threshold": 0.58,
+      "examples": [
+        "重新调用一下试试",
+        "你要调用工具，再试一下",
+        "好的你调用失败了🤔",
+        "是我的问题吧，系统提示词没写好",
+        "不是，你合理的微调缩减一点！",
+        "再测试一下😯",
+        "额，报错啦",
+        "就把最近一次的重置一下，然后我继续给你反应哦",
+        "没事儿，我用豆包查题库就行了",
+        "唔，调用了工具，但是没有收到你的语音条"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "route": "intimate_contact",
+      "action": "skip",
+      "text": "我想把这段亲密时间留给眼前的我们，先不翻旧事。"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "那份读书会安排，上次定在几楼？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "我们之前给练习项目取的名字是什么？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "上回讨论地图集时，我为什么选择了新版？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "先前那份出游清单里带了哪些东西？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "还记得我们上次用什么办法修好表格吗？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "之前商量的图书交换活动后来怎样安排了？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "我们第一次讨论那本虚构小说时说了什么？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "上次你帮我整理的练习步骤有哪些？"
+    },
+    {
+      "route": "recall_needed",
+      "action": "recall",
+      "text": "之前给故事角色选的围巾是什么颜色？"
+    },
+    {
+      "route": "技术闲聊",
+      "action": "skip",
+      "text": "演示项目启动后先加载两条测试记录，后续分页由客户端发起请求。"
+    },
+    {
+      "route": "present_reality",
+      "action": "recall",
+      "text": "昨天这个点我在干什么来着"
+    },
+    {
+      "route": "present_chitchat",
+      "action": "recall",
+      "text": "你还记得我们上次聊到哪儿了吗"
+    },
+    {
+      "route": "技术闲聊",
+      "action": "recall",
+      "text": "上次那个报错我们最后是怎么解决的"
+    },
+    {
+      "route": "技术闲聊",
+      "action": "recall",
+      "text": "之前配好的那套参数我填的是什么"
+    }
+  ]
+}

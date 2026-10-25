@@ -5,11 +5,11 @@ import sqlite3
 
 import pytest
 
-from serein.core import Conflict, Store
-from serein.core.reader import Reader
-from serein.core.store import digest, encode
-from serein.ingest.archive_snapshot import export_archives
-from serein.ingest.legacy_archive import import_archives
+from lattice.core import Conflict, Store
+from lattice.core.reader import Reader
+from lattice.core.store import digest, encode
+from lattice.ingest.archive_snapshot import export_archives
+from lattice.ingest.legacy_archive import import_archives
 
 
 def artifact(path, raw):
@@ -20,7 +20,7 @@ def artifact(path, raw):
 def archive_snapshot():
     dream = b"---\r\ndream_id: dream_one\r\nsource_bucket_ids: [scene_old]\r\nsurfaced: true\r\n---\r\noriginal dream\r\n"
     deleted = {"dream_id": "dream_deleted", "event": "deleted", "deleted_at": "old", "reason": "surfaced_one_shot"}
-    return {"format": "serein-archive-snapshot-v1", "origin": "test-archives", "captured_at": "2026-09-06T00:00:00+00:00",
+    return {"format": "lattice-archive-snapshot-v1", "origin": "test-archives", "captured_at": "2026-09-06T00:00:00+00:00",
             "window_shadows": [{"window_id": "window_one", "revision_number": 2, "content": "shadow body",
                                 "source_hash": "original-input-hash", "sections_json": '{ "section": "body" }',
                                 "moment_bucket_ids_json": '["scene_deleted"]', "revision_root_id": "window_one"}],

@@ -17,7 +17,7 @@ private_deploy={'runtime','backups','secrets','venv','config.toml','.env','insta
 # Store fingerprints instead of repeating the removed personal text in a guard.
 private_drafts = ['14c8e19dc0384d8e630c46f8e287ed7b5ea2af09e682315cb8f34f4bcd792ae7', '1c1696319db7417f77d3006f274386e95f2248afa1a8b6f5c25b609441209454', '813625ad8bf4d72518aff145bce86035dc8ee72bd3710ad6466ca06b83fd1a59']
 private_names = ['04a69d8da302ef4efbe84fa115e688a02e70a772500ba0e22e673467da47da11', '570764f969e6d4d038c6fe40cb028b11779162b2bc71c97c8da5a38ed0dc8b2b', 'a8b2eca10c180ef011be6ffdb5873c29e8e22e56a37d92792142f48b497a3bfb']
-sample_prefixes = ('examples/', 'src/serein/resources/', 'web/codex_agents/')
+sample_prefixes = ('examples/', 'src/lattice/resources/', 'web/codex_agents/')
 def inspect_text(name, content):
     if name.endswith('.json'):
         def strings(value):
@@ -58,5 +58,5 @@ for name in files:
 args.output.parent.mkdir(parents=True,exist_ok=True)
 with zipfile.ZipFile(args.output,'w',zipfile.ZIP_DEFLATED) as archive:
     for name in files:
-        archive.write(root/name,'serein-public/'+name)
+        archive.write(root/name,'lattice-public/'+name)
 print(json.dumps({'status':'packaged','files':len(files),'output':str(args.output)}))

@@ -2,15 +2,15 @@ import sqlite3
 
 import pytest
 
-from serein.adapters.bridge import BridgeMessages
-from serein.application import Application
-from serein.config import Settings
-from serein.core import Store
-from serein.core.search import build_index
+from lattice.adapters.bridge import BridgeMessages
+from lattice.application import Application
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.search import build_index
 
 
 def test_only_selected_sessions_supply_verbatim_evidence(tmp_path):
-    source_db, target_db = tmp_path / "bridge.db", tmp_path / "serein.db"
+    source_db, target_db = tmp_path / "bridge.db", tmp_path / "lattice.db"
     with sqlite3.connect(source_db) as conn:
         conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY,session_id INTEGER,role TEXT,content TEXT,created_at TEXT)")
         conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?)", [(1, 7, "user", "原文\r\nexact", "time"),
@@ -40,7 +40,7 @@ def test_only_selected_sessions_supply_verbatim_evidence(tmp_path):
 
 
 def test_bridge_source_to_frozen_candidate_acceptance_and_recall(tmp_path):
-    source_db, target_db, index = tmp_path / "assistant.db", tmp_path / "serein.db", tmp_path / "recall.sqlite"
+    source_db, target_db, index = tmp_path / "assistant.db", tmp_path / "lattice.db", tmp_path / "recall.sqlite"
     with sqlite3.connect(source_db) as conn:
         conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY,session_id INTEGER,role TEXT,content TEXT,created_at TEXT)")
         conn.execute("INSERT INTO messages VALUES (1,7,'user','今天雨天归航，原话。','2026-09-06')")

@@ -2,16 +2,16 @@ import json
 import sqlite3
 import hashlib
 import pytest
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store, encode
-from serein.compat.germany.raw_events import RawEventStore
-from serein.compat.originals import Originals
-from serein.legacy_migration.originals import scan_originals, import_originals
-from serein.legacy_migration.scan import scan
-from serein.legacy_migration.workflow import Migration
-from serein.legacy_migration.history import run_history_repair
-from serein.legacy_migration.dates import legacy_dates, repair_dates
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store, encode
+from lattice.compat.germany.raw_events import RawEventStore
+from lattice.compat.originals import Originals
+from lattice.legacy_migration.originals import scan_originals, import_originals
+from lattice.legacy_migration.scan import scan
+from lattice.legacy_migration.workflow import Migration
+from lattice.legacy_migration.history import run_history_repair
+from lattice.legacy_migration.dates import legacy_dates, repair_dates
 
 
 @pytest.fixture

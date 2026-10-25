@@ -5,21 +5,21 @@ import { readFileSync } from 'node:fs';
 import { preview } from 'vite';
 import { requireWebAuth } from './webAuth.mjs';
 
-const filename = process.env.SEREIN_WEB_AUTH_FILE;
-if (!filename) throw new Error('SEREIN_WEB_AUTH_FILE is required');
-const core = new URL(process.env.SEREIN_MEMORY_URL);
+const filename = process.env.LATTICE_WEB_AUTH_FILE;
+if (!filename) throw new Error('LATTICE_WEB_AUTH_FILE is required');
+const core = new URL(process.env.LATTICE_MEMORY_URL);
 let publicOrigin = null;
-if (process.env.SEREIN_PUBLIC_ORIGIN) {
-  publicOrigin = new URL(process.env.SEREIN_PUBLIC_ORIGIN);
+if (process.env.LATTICE_PUBLIC_ORIGIN) {
+  publicOrigin = new URL(process.env.LATTICE_PUBLIC_ORIGIN);
   const loopback = ['localhost','127.0.0.1','[::1]'].includes(publicOrigin.hostname);
   if ((publicOrigin.protocol !== 'https:' && !(publicOrigin.protocol === 'http:' && loopback))
       || publicOrigin.username || publicOrigin.password || publicOrigin.pathname !== '/'
-      || publicOrigin.search || publicOrigin.hash) throw new Error('SEREIN_PUBLIC_ORIGIN must be an HTTPS origin or loopback HTTP origin');
+      || publicOrigin.search || publicOrigin.hash) throw new Error('LATTICE_PUBLIC_ORIGIN must be an HTTPS origin or loopback HTTP origin');
 }
-process.env.SEREIN_MEMORY_TOKEN = readFileSync(process.env.SEREIN_MEMORY_TOKEN_FILE, 'utf8').trim();
-if (!process.env.SEREIN_MEMORY_TOKEN) throw new Error('Memory token is empty');
+process.env.LATTICE_MEMORY_TOKEN = readFileSync(process.env.LATTICE_MEMORY_TOKEN_FILE, 'utf8').trim();
+if (!process.env.LATTICE_MEMORY_TOKEN) throw new Error('Memory token is empty');
 const web = await preview({ root: fileURLToPath(new URL('../', import.meta.url)),
-  preview: { host: '127.0.0.1', port: Number(process.env.SEREIN_PREVIEW_PORT || 4173), strictPort: true, allowedHosts: true } });
+  preview: { host: '127.0.0.1', port: Number(process.env.LATTICE_PREVIEW_PORT || 4173), strictPort: true, allowedHosts: true } });
 const bearerPaths = new Set(['/v1/models', '/v1/chat/completions',
   '/api/hook/recall', '/v1/host/deliveries']);
 const hopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
@@ -38,7 +38,7 @@ const server = http.createServer((req, res) => {
       .catch(() => { res.writeHead(503); res.end(); });
     return;
   }
-  const mcp = ['/serein/mcp', '/serein/mcp/', '/mcp', '/mcp/'].includes(path);
+  const mcp = ['/lattice/mcp', '/lattice/mcp/', '/mcp', '/mcp/'].includes(path);
   const oauth = path === '/authorize' || path === '/token' || path === '/register'
     || path.startsWith('/.well-known/oauth-');
   let requestHost;
@@ -67,7 +67,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(401); res.end('Bearer token required'); return;
   }
   const backend = chat || oauth;
-  const target = backend ? core : new URL(`http://127.0.0.1:${process.env.SEREIN_PREVIEW_PORT || 4173}`);
+  const target = backend ? core : new URL(`http://127.0.0.1:${process.env.LATTICE_PREVIEW_PORT || 4173}`);
   const headers = { ...req.headers, host: backend ? target.host : req.headers.host };
   if (mcp || oauth) {
     headers['x-forwarded-host'] = publicOrigin?.host || req.headers.host;
@@ -87,7 +87,7 @@ const server = http.createServer((req, res) => {
   res.on('close', () => { if (!res.writableEnded) proxy.destroy(); });
   req.pipe(proxy);
 });
-server.listen(Number(process.env.SEREIN_GATEWAY_PORT || 8080), process.env.SEREIN_GATEWAY_BIND || '0.0.0.0');
+server.listen(Number(process.env.LATTICE_GATEWAY_PORT || 8080), process.env.LATTICE_GATEWAY_BIND || '0.0.0.0');
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
   server.close(); web.httpServer.close();
 });

@@ -5,14 +5,14 @@ from dataclasses import replace
 
 import pytest
 
-from serein.compat import narrative_candidates as candidates
-from serein.compat.germany.narrative_revision_scout import build_keyword_corridors, build_new_roll_candidate_prompt
-from serein.compat.scout import Scout
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.recall.index import Search, build_index
-from serein.tagging_entities import snapshot, validate
+from lattice.compat import narrative_candidates as candidates
+from lattice.compat.germany.narrative_revision_scout import build_keyword_corridors, build_new_roll_candidate_prompt
+from lattice.compat.scout import Scout
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.recall.index import Search, build_index
+from lattice.tagging_entities import snapshot, validate
 from test_live_clients import live
 
 
@@ -158,7 +158,7 @@ def test_daily_scan_supplies_entity_only_pair_and_notices_new_tags(live, tmp_pat
     async def propose(**kwargs):
         captured.append(kwargs['corridors'])
         return []
-    monkeypatch.setattr('serein.compat.germany.narrative_scan.propose_new_roll_candidates', propose)
+    monkeypatch.setattr('lattice.compat.germany.narrative_scan.propose_new_roll_candidates', propose)
     monkeypatch.setattr(Scout, 'role_rules', lambda self: 'rules')
     scout = Scout(settings)
     first = asyncio.run(scout._scan_narrative_revision_inbox())
@@ -199,7 +199,7 @@ def test_failed_semantic_lane_retries_after_recovery_without_losing_lexical(live
         calls.append(kwargs['corridors'])
         assert all(row['candidates'] for row in kwargs['corridors'])
         return []
-    monkeypatch.setattr('serein.compat.germany.narrative_scan.propose_new_roll_candidates', propose)
+    monkeypatch.setattr('lattice.compat.germany.narrative_scan.propose_new_roll_candidates', propose)
     scout = Scout(settings)
     failed = asyncio.run(scout._scan_narrative_revision_inbox())
     assert failed['external_scout_status'] == 'ok'

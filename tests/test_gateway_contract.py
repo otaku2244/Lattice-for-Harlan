@@ -2,11 +2,11 @@ import json
 
 import pytest
 
-from serein.api.surface import SELF_USE_TOOLS, self_use_catalog
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.recall.rendering import render, read_arc_picks
-from serein.recall.surface_gate import SurfaceGate
+from lattice.api.surface import SELF_USE_TOOLS, self_use_catalog
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.recall.rendering import render, read_arc_picks
+from lattice.recall.surface_gate import SurfaceGate
 
 
 @pytest.mark.parametrize('route', ['present_chitchat', 'present_reality', '技术闲聊', 'custom_skip'])

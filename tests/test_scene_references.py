@@ -6,9 +6,9 @@ import sqlite3
 
 import pytest
 
-from serein.core import Conflict, Store
-from serein.core.store import digest
-from serein.ingest.legacy_scene import import_snapshot
+from lattice.core import Conflict, Store
+from lattice.core.store import digest
+from lattice.ingest.legacy_scene import import_snapshot
 from test_scene_import import artifact, snapshot
 
 
@@ -67,7 +67,7 @@ def test_relation_conflict_rolls_back_the_document_batch(tmp_path, snapshot):
 
 def test_version_one_database_upgrades_without_losing_body(tmp_path):
     path = tmp_path / "version1.db"
-    schema = Path(__file__).parents[1] / "src/serein/core/schema.sql"
+    schema = Path(__file__).parents[1] / "src/lattice/core/schema.sql"
     with sqlite3.connect(path) as db:
         db.executescript(schema.read_text(encoding="utf-8"))
         db.execute("INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)",

@@ -62,8 +62,8 @@ export function SettingsPanel({
     const openTab = (event) => {
       if (tabs.some(([key]) => key === event.detail)) showTab(event.detail);
     };
-    window.addEventListener("serein:open-settings-tab", openTab);
-    return () => window.removeEventListener("serein:open-settings-tab", openTab);
+    window.addEventListener("lattice:open-settings-tab", openTab);
+    return () => window.removeEventListener("lattice:open-settings-tab", openTab);
   }, [open]);
   const [summaryRequest, setSummaryRequest] = useState(0);
   function openSummary() {

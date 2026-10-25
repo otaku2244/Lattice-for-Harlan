@@ -6,14 +6,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.api.mcp import create_server
-from serein.api.read_text import diary_text
-from serein.application import Application
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core import Store
-from serein.deployment import save_settings
+from lattice.api.http import create_app
+from lattice.api.mcp import create_server
+from lattice.api.read_text import diary_text
+from lattice.application import Application
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.deployment import save_settings
 
 
 @pytest.fixture
@@ -119,7 +119,7 @@ def test_semicolon_cues_on_mcp_write_and_edit(runtime,legacy):
 
 
 def test_proposed_scene_splits_cues_before_length_validation():
-    from serein.api.mcp import Draft
+    from lattice.api.mcp import Draft
     first,second = 'rain'*12,'window'*8
     draft = Draft(title='Synthetic',body_md='Synthetic scene',date='2026-09-26',
                   cues=[f'{first};{second}；{first}'])
@@ -145,7 +145,7 @@ def test_scene_domain_evidence_and_favorite_are_atomic(runtime, favorite):
     key = re.search(r'\[scene_id:([^\]]+)\]', reply)[1]
     saved = call(server, 'read_memory', identifier=key, with_evidence=True)
     assert 'body:\nAuthored scene' in saved and 'text:\nExact synthetic quotation' in saved
-    from serein.compat.scenes import Scenes
+    from lattice.compat.scenes import Scenes
     assert Scenes(runtime.database).evidence(key)['evidence_refs'][0]['content'] == 'Exact synthetic quotation'
     with Store(runtime.database, read_only=True) as store:
         current = store.read(key)
@@ -200,7 +200,7 @@ def test_http_diary_self_use_flow_and_locked_rejections(runtime):
 
 
 def test_diary_projection_failure_rolls_back_new_contract(runtime, monkeypatch):
-    import serein.api.authored_tools as module
+    import lattice.api.authored_tools as module
     def fail(_conn):
         raise RuntimeError('synthetic projection failure')
     monkeypatch.setattr(module, 'project_diaries', fail)

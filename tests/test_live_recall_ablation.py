@@ -1,10 +1,10 @@
 import json
 import sqlite3
 
-from serein.config import Settings
-from serein.core.store import Store
-from serein.recall.index import build_index
-from serein.recall.service import Recall
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.recall.index import build_index
+from lattice.recall.service import Recall
 
 
 def test_cue_ablation_removes_only_the_cue_entrance(tmp_path,monkeypatch):
@@ -20,7 +20,7 @@ def test_cue_ablation_removes_only_the_cue_entrance(tmp_path,monkeypatch):
     class Embedding:
         def __init__(self,*args,**kwargs):pass
         def query(self,text):return {'query':text,'profile':profile,'embedding':[0,1]}
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient',Embedding)
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient',Embedding)
     seen=[]
     def rank(query,items):
         seen.extend(items)

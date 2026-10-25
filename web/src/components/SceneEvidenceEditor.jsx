@@ -37,7 +37,7 @@ export function SceneEvidenceEditor({ sceneId, sceneTitle }) {
     setState("loading");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/scene-evidence", {
+      const response = await fetch("/__lattice/memory/scene-evidence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId }),
@@ -68,7 +68,7 @@ export function SceneEvidenceEditor({ sceneId, sceneTitle }) {
     setSourceState("loading");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/bridge-source-messages", {
+      const response = await fetch("/__lattice/memory/bridge-source-messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,7 +150,7 @@ export function SceneEvidenceEditor({ sceneId, sceneTitle }) {
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/bind-scene-evidence", {
+      const response = await fetch("/__lattice/memory/bind-scene-evidence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -178,7 +178,7 @@ export function SceneEvidenceEditor({ sceneId, sceneTitle }) {
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/unbind-scene-evidence", {
+      const response = await fetch("/__lattice/memory/unbind-scene-evidence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId, evidenceIds: [evidenceId] }),

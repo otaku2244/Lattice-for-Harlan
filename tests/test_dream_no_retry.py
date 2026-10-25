@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from serein.compat.dreams import Dreams
-from serein.compat.germany.dream_engine import DreamEngine
+from lattice.compat.dreams import Dreams
+from lattice.compat.germany.dream_engine import DreamEngine
 from test_live_clients import live
 
 
@@ -69,7 +69,7 @@ def test_competing_dream_workers_cannot_issue_two_requests(live):
 
 def test_dream_sdk_does_not_retry_http_errors(monkeypatch):
     import openai
-    for name in ('SEREIN_DREAM','OMBRE_DREAM'):
+    for name in ('LATTICE_DREAM','OMBRE_DREAM'):
         for suffix in ('ENABLED','API_KEY','MODEL','BASE_URL'):
             monkeypatch.delenv(name+'_'+suffix,raising=False)
     requests=[]

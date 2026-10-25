@@ -5,9 +5,9 @@ import remarkGfm from "remark-gfm";
 const tabs = [["start", "开始"], ["features", "日记与功能"], ["favorites", "收藏"], ["connect", "接入"], ["source", "原话"], ["install", "一键安装"], ["migration", "迁移"], ["passages", "长文分段"], ["events", "自动 Event"]];
 const settings = { appearance: "外观", features: "功能", models: "模型", configuration: "配置", imports: "对话导入", migration: "旧库迁移" };
 const hookSnippet = `\`\`\`python
-from examples.hook_host import SereinHook
+from examples.hook_host import LatticeHook
 
-hook = SereinHook.from_env()
+hook = LatticeHook.from_env()
 turn = hook.prepare("chat-001", [{"role": "user", "content": "上次读书会定在什么时候？"}])
 reply = existing_model_call(turn.messages)  # 换成宿主现有的模型调用
 hook.record_success(turn)  # 仅在模型完整成功后登记
@@ -21,7 +21,7 @@ function installationMarkdown(location) {
   const root = location?.root || "";
   const windows = /^[A-Za-z]:[\\/]/.test(root);
   const quote = windows ? `'${root.replaceAll("'", "''")}'` : `'${root.replaceAll("'", "'\\''")}'`;
-  const enter = root ? windows ? `Set-Location -LiteralPath ${quote}` : `cd -- ${quote}` : "# 先进入解压后的 Serein 发行目录";
+  const enter = root ? windows ? `Set-Location -LiteralPath ${quote}` : `cd -- ${quote}` : "# 先进入解压后的 Lattice 发行目录";
   const launch = windows ? "powershell -ExecutionPolicy Bypass -File .\\scripts\\one_click.ps1" : "bash scripts/one_click.sh";
   return `### 在安装主机上打开菜单
 
@@ -65,7 +65,7 @@ export function UsageGuide({ onOpenSettingsTab, initialPage }) {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/__serein/install-location", { signal: controller.signal })
+    fetch("/__lattice/install-location", { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(value => { if (value?.root) setLocation(value); }).catch(() => {});
     return () => { controller.abort(); window.clearTimeout(snapTimer.current); };
@@ -128,10 +128,10 @@ export function UsageGuide({ onOpenSettingsTab, initialPage }) {
       <div className="settings-group__heading"><h3>日记、暗房与可选功能</h3><p>这些内容的保存、候选和注入边界彼此独立。</p></div>
       <h4>日记与暗房</h4>
       <p>日记在侧栏单独阅读，也可用 <code>read_diary</code>、<code>write_diary</code>、<code>revise_diary</code>、<code>comment_diary</code> 和 <code>delete_diary</code> 管理。它不参加普通 Scene／Event 自动召回，也不能收藏；需要时由网页或工具明确读取。日记可以作为叙事卷材料，近期没有新 Event／Scene 时也可能成为梦境材料。</p>
-      <p>新建日记时把 <code>unlock_at</code> 设为未来时间，就会成为暗房日记。到期前正文不可读，也不能修订、评论或删除；解锁后按普通日记使用。暗房是 Serein 接口层的锁定约束，不等于对数据库备份加密。</p>
+      <p>新建日记时把 <code>unlock_at</code> 设为未来时间，就会成为暗房日记。到期前正文不可读，也不能修订、评论或删除；解锁后按普通日记使用。暗房是 Lattice 接口层的锁定约束，不等于对数据库备份加密。</p>
       <h4>换窗：窗影与 /resume</h4>
       <p>“窗影”让当前主模型在换窗前写下“我眼中的你”“我眼中的自己”和“这一窗发生的事”；它不生成 Scene，也不进入普通向量召回。“开窗续接”是另一个开关，可以勾选最新窗影、最近 Event、收藏 Scene、自选 Event／Scene，以及最近或尚未整理的原话。</p>
-      <p>新窗口使用独立的 <code>X-Serein-Window-ID</code>，在经过 Serein 网关的聊天中发送 <code>/resume</code> 后，只把勾选内容明确带入；不会整库注入，也不会额外运行语义召回。仅连接 MCP 不处理这条指令。</p>
+      <p>新窗口使用独立的 <code>X-Lattice-Window-ID</code>，在经过 Lattice 网关的聊天中发送 <code>/resume</code> 后，只把勾选内容明确带入；不会整库注入，也不会额外运行语义召回。仅连接 MCP 不处理这条指令。</p>
       <h4>备忘、梦境、心绪与防撤退</h4>
       <p>备忘是“留给未来的话”，可按日期、轮次、早晚和次数限制在符合条件的聊天里带入；它不是主动通知，也不写成 Scene／Event。梦境在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置页</SettingsLink>选择模型，可设置每日概率和“梦境 · 主模型 Prompt”；凌晨四点后按日尝试，优先读取最近 48 小时新建的最多五条 Event／Scene，没有时才读新日记。</p>
       <p>心绪和防撤退共用所选模型，但开关独立。心绪按窗口保存状态和变化，只在心绪页展示，不注入后续聊天；防撤退在完整回复后异步判断，命中后按六轮且至少十分钟的冷却，在下一轮带入一次提示。</p>
@@ -153,23 +153,23 @@ export function UsageGuide({ onOpenSettingsTab, initialPage }) {
       <p>接口类型选 OpenAI 兼容，<strong>Base URL</strong> 填 <code>http://公网IP:网关端口/v1</code>，使用域名时填 <code>https://你的域名/v1</code>；<strong>API Key</strong> 填完整的 Gateway Key，密钥输入框不用加 <code>Bearer </code> 前缀。聊天客户端可拉取已配置的全部上游模型。</p>
       <p>手动发请求时，模型列表为 <code>GET http://公网IP:网关端口/v1/models</code>，聊天为 <code>POST http://公网IP:网关端口/v1/chat/completions</code>；请求头为 <code>Authorization: Bearer &lt;Gateway Key&gt;</code>，把占位文字及尖括号替换成实际 Key。客户端 Base URL 通常只填到 <code>/v1</code>。</p>
       <h4>MCP · Streamable HTTP</h4>
-      <p><strong>服务器 URL</strong> 填 <code>https://你的域名/serein/mcp</code>，<strong>传输类型</strong> 选 <code>Streamable HTTP</code>。支持 OAuth 的客户端把身份验证选为 <strong>OAuth</strong>；浏览器打开 Serein 授权页后，手动输入 Gateway Key 并确认。OAuth 要求 HTTPS 域名，同机 <code>localhost</code> 例外；不要把 Key 写进 URL。</p>
-      <p>不支持 OAuth、但可添加请求头的客户端仍可使用静态方式：名称 <code>Authorization</code>，值 <code>Bearer &lt;Gateway Key&gt;</code>；专门的 Bearer Token 输入框只填完整 Key。<code>http://公网IP:网关端口/serein/mcp</code> 也只能使用静态方式。</p>
+      <p><strong>服务器 URL</strong> 填 <code>https://你的域名/lattice/mcp</code>，<strong>传输类型</strong> 选 <code>Streamable HTTP</code>。支持 OAuth 的客户端把身份验证选为 <strong>OAuth</strong>；浏览器打开 Lattice 授权页后，手动输入 Gateway Key 并确认。OAuth 要求 HTTPS 域名，同机 <code>localhost</code> 例外；不要把 Key 写进 URL。</p>
+      <p>不支持 OAuth、但可添加请求头的客户端仍可使用静态方式：名称 <code>Authorization</code>，值 <code>Bearer &lt;Gateway Key&gt;</code>；专门的 Bearer Token 输入框只填完整 Key。<code>http://公网IP:网关端口/lattice/mcp</code> 也只能使用静态方式。</p>
       <p>旧地址 <code>http://公网IP:网关端口/mcp</code> 仍兼容。到<SettingsLink tab="features" onOpen={onOpenSettingsTab}>功能设置</SettingsLink>开启可选工具并保存后，刷新客户端工具列表。</p>
-      <p>仅当客户端和 Serein 服务在同一台机器上时，才把“公网IP”换成 <code>127.0.0.1</code>。同一局域网内的其他设备可填安装主机的局域网 IP；手机连接电脑时不能填 <code>127.0.0.1</code>，那会指向手机自身。</p>
+      <p>仅当客户端和 Lattice 服务在同一台机器上时，才把“公网IP”换成 <code>127.0.0.1</code>。同一局域网内的其他设备可填安装主机的局域网 IP；手机连接电脑时不能填 <code>127.0.0.1</code>，那会指向手机自身。</p>
       <h4>Gateway Key 在哪里</h4>
       <p>MCP 和聊天 API 共用安装时生成的 Gateway Key。安装完成的终端输出和安装目录下的 <code>deploy/connection-guide.txt</code> 都有；也可读取 <code>{location?.root ? `${location.root.replace(/[\\/]$/, "")}${/^[A-Za-z]:/.test(location.root) ? "\\" : "/"}deploy${/^[A-Za-z]:/.test(location.root) ? "\\" : "/"}secrets${/^[A-Za-z]:/.test(location.root) ? "\\" : "/"}api-token` : "deploy/secrets/api-token"}</code> 的完整内容。本页不展示实际密钥。</p>
       <p>网页登录用安装时设置的用户名、密码；模型厂商的 API Key 填在<SettingsLink tab="models" onOpen={onOpenSettingsTab}>模型页</SettingsLink>。主菜单 <code>6</code> 会更换 Gateway Key，旧静态 Key 和已经发放的 OAuth 凭据随即失效；OAuth 客户端需要重新授权。密钥和连接说明请勿公开。</p>
       <h4>聊天窗口与开窗续接</h4>
-      <p>在客户端添加请求头：名称填 <code>X-Serein-Window-ID</code>，值填当前会话的独立标识，例如 <code>chat-001</code>。同一会话保持不变，新建会话换一个值；若客户端支持会话 ID 变量，可使用它。</p>
-      <p>不填请求头也能使用，会统一进入默认会话 <code>main</code>，共用提醒轮次和召回冷却，无法据此识别新窗口。固定写一个值也不会自动区分窗口。启用开窗续接后，可在侧栏“换窗”页选择带入最近 1–50 条原话；“最近原话”和“尚未整理的原话”只能开启一个，打开一个会自动关闭另一个。选择命令方式后，在聊天中发送 <code>/resume</code>，也可以在指令后写上想继续聊的话，Serein 会读取完整的接续资料。</p>
+      <p>在客户端添加请求头：名称填 <code>X-Lattice-Window-ID</code>，值填当前会话的独立标识，例如 <code>chat-001</code>。同一会话保持不变，新建会话换一个值；若客户端支持会话 ID 变量，可使用它。</p>
+      <p>不填请求头也能使用，会统一进入默认会话 <code>main</code>，共用提醒轮次和召回冷却，无法据此识别新窗口。固定写一个值也不会自动区分窗口。启用开窗续接后，可在侧栏“换窗”页选择带入最近 1–50 条原话；“最近原话”和“尚未整理的原话”只能开启一个，打开一个会自动关闭另一个。选择命令方式后，在聊天中发送 <code>/resume</code>，也可以在指令后写上想继续聊的话，Lattice 会读取完整的接续资料。</p>
       <p>两个续接入口在功能设置独立开关，可同时开启；内容选择在侧栏“换窗”页。默认开启网关指令入口，发送 <code>/resume</code> 时聊天需经过本实例网关；MCP 入口开启后提供只读 <code>resume</code> 工具。已通过指令读取本轮资料时，无须再次调用工具。两个入口均关闭时仍可预览和复制，关闭开窗续接总开关则停用整个功能。勾选后预览会自动更新，无须先保存；点击“保存选择”才更新下次续接的内容。让客户端读到 <code>has_more: false</code> 才算读完；换窗页同样读完全部页面后才能复制完整资料。读取不会调用模型或记录注入。</p>
       <h4>自建前后端：预装到 Codex 新窗口</h4>
-      <p>如果聊天界面、后端和换窗动作都由你自己管理，可让后端请求 Serein 的结构化续接资料，再通过 Codex App Server 新建 thread，预装最新窗影、Scene、Event 和所选原话。示例目录：<code>{codexExamplePath}</code>。</p>
-      <p>原话保持原来的 user / assistant 角色，正文前会带上可供 Serein 精确读回的原文 ID（如 <code>raw:42</code>）；来源另有上游消息 ID 时，也保留 <code>source_message_id</code>。Gateway Key 只放在后端。完整流程见 <a className="settings-link" href="https://github.com/Yinglianchun/Serein/blob/main/docs/codex-continuity-packet.md" target="_blank" rel="noreferrer">Codex 换窗包接入说明</a>。</p>
+      <p>如果聊天界面、后端和换窗动作都由你自己管理，可让后端请求 Lattice 的结构化续接资料，再通过 Codex App Server 新建 thread，预装最新窗影、Scene、Event 和所选原话。示例目录：<code>{codexExamplePath}</code>。</p>
+      <p>原话保持原来的 user / assistant 角色，正文前会带上可供 Lattice 精确读回的原文 ID（如 <code>raw:42</code>）；来源另有上游消息 ID 时，也保留 <code>source_message_id</code>。Gateway Key 只放在后端。完整流程见 <a className="settings-link" href="https://github.com/Yinglianchun/Serein/blob/main/docs/codex-continuity-packet.md" target="_blank" rel="noreferrer">Codex 换窗包接入说明</a>。</p>
       <h4>已有聊天宿主：用 Hook 找前情</h4>
-      <p>如果模型调用由你自己的服务或 Agent 管理，先在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置页</SettingsLink>建立 / 补齐检索索引。宿主在新的用户轮用 Gateway Key 请求 <code>POST /api/hook/recall</code>，把返回的 <code>additional_context</code> 实际放进模型输入；返回的 <code>recalled_ids</code> 只是备选，<code>injected: false</code> 表示 Serein 尚未替宿主注入。</p>
-      <p>示例文件：<code>{hookExamplePath}</code>。在安装目录运行宿主代码，服务端设置 <code>SEREIN_BASE_URL</code> 为实例根地址、<code>SEREIN_GATEWAY_KEY</code> 为 Gateway Key。下面的 <code>existing_model_call</code> 要换成你自己的模型调用。</p>
+      <p>如果模型调用由你自己的服务或 Agent 管理，先在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置页</SettingsLink>建立 / 补齐检索索引。宿主在新的用户轮用 Gateway Key 请求 <code>POST /api/hook/recall</code>，把返回的 <code>additional_context</code> 实际放进模型输入；返回的 <code>recalled_ids</code> 只是备选，<code>injected: false</code> 表示 Lattice 尚未替宿主注入。</p>
+      <p>示例文件：<code>{hookExamplePath}</code>。在安装目录运行宿主代码，服务端设置 <code>LATTICE_BASE_URL</code> 为实例根地址、<code>LATTICE_GATEWAY_KEY</code> 为 Gateway Key。下面的 <code>existing_model_call</code> 要换成你自己的模型调用。</p>
       <div className="usage-guide__markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{hookSnippet}</ReactMarkdown></div>
       <p>模型完整成功后才用 <code>POST /v1/host/deliveries</code> 登记实际交付的 ID；失败或中断不登记。工具续轮沿用本轮上下文，不再次查找或记账；同一会话保持同一个窗口 ID，示例会读取最近五次成功交付的 ID 避免连轮重复。Hook 不会自动归档聊天原话。完整请求格式见 <a className="settings-link" href="https://github.com/Yinglianchun/Serein/blob/main/docs/hook-integration.md" target="_blank" rel="noreferrer">Hook 接入说明</a>。</p>
     </section>
@@ -194,7 +194,7 @@ export function UsageGuide({ onOpenSettingsTab, initialPage }) {
       <div className="settings-group__heading"><h3>从旧 Ombre 迁移</h3></div>
       <p>原公开版的梦境读取 <code>state/dreams/</code>，暗房读取 <code>state/darkroom/entries.jsonl</code> 及相关状态文件，按原格式迁入，不要求 <code>diary.db</code>。请使用包含 <code>state</code> 的完整旧备份；只带 <code>buckets</code> 的备份无法补齐梦境和暗房。</p>
       <p>已经迁移过的用户：升级并完成重新部署后，在 <code>se</code> 中选择<strong>菜单 10「历史数据补漏」</strong>，提供含 <code>state</code> 的完整旧库目录或 tar/tar.gz 备份，先预览数量再确认。升级本身不会自动补漏；补漏前会备份，保留暗房修订、锁定、归档／撤回状态和梦境删除记录，不调用模型、不重导 Scene、不重建向量。</p>
-      <p>打开<SettingsLink tab="migration" onOpen={onOpenSettingsTab}>旧库迁移页</SettingsLink>，输入运行 Serein 的机器上的旧库根目录、buckets 目录或 tar 路径；Docker 先在安装菜单 7 把该目录授权为只读来源。读取并预览后，可直接在浏览器下载所选旧库路径的 ZIP。也可把 64 MiB 以内的 tar / tar.gz 拖到上传区。预览后填写旧名字及别名，确认转换规则再开始。聊天记录和 Operit 备份在<SettingsLink tab="imports" onOpen={onOpenSettingsTab}>对话导入页</SettingsLink>处理，最大 32 MB。任务在后台运行，可以暂停并从同一来源续跑；主域和模型先在页面配置。</p>
+      <p>打开<SettingsLink tab="migration" onOpen={onOpenSettingsTab}>旧库迁移页</SettingsLink>，输入运行 Lattice 的机器上的旧库根目录、buckets 目录或 tar 路径；Docker 先在安装菜单 7 把该目录授权为只读来源。读取并预览后，可直接在浏览器下载所选旧库路径的 ZIP。也可把 64 MiB 以内的 tar / tar.gz 拖到上传区。预览后填写旧名字及别名，确认转换规则再开始。聊天记录和 Operit 备份在<SettingsLink tab="imports" onOpen={onOpenSettingsTab}>对话导入页</SettingsLink>处理，最大 32 MB。任务在后台运行，可以暂停并从同一来源续跑；主域和模型先在页面配置。</p>
       <p>转换保留标题和清理后的正文；reflection 与 affect_anchor 整段移除，其他三级分节只去标题。feel / whisper 转为日记，日印象不导入。归档条目保持归档。</p>
       <p>旧“自我锚点”区的正文直接丢弃，不恢复独立的“自我”分类，也不挂成梦境身份锚点。现在的自我由持续更新的窗影表达；心绪状态和备忘仍照旧迁入。做梦只读近期新建的 Event／Scene，最多五条；两者都没有才读新日记，不取召回或修改记录。做梦概率在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置页</SettingsLink>设置，凌晨四点后检查，与三点的 Event 结算错开。</p>
       <p>旧库中的 Persona 心绪状态、关系状态、变化历史和照顾备忘会一同迁入；备忘保留完成／归档状态、期限、提醒次数与轮次。扫描会列出找到的状态库，缺失会明确提示。旧默认会话映射为 <code>main</code>；其他会话标识保留。迁入后按需开启心绪和备忘，已有新状态不会被覆盖。</p>
@@ -230,7 +230,7 @@ export function UsageGuide({ onOpenSettingsTab, initialPage }) {
       <p>图片转录按同一张图累计三次失败，之后可点“重试这张图片”；成功图片与独立文字继续，依赖失败图片的活动暂存。原图无有效地址或返回 404/410 则跳过附件，保留文字和其他图片，不猜补内容。下载超时、403/5xx 或冻结材料损坏仍保留错误。手动重试会重新开放调用机会，可能产生费用。</p>
       <p>归线材料“待修复”与模型失败暂停不同：先重新校验，无法恢复时明确确认作废本批计划并重新归线；不会自动跳过。</p>
       <p>在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置 → 自动摘要配置</SettingsLink>可调整默认三天的 Track 回看、Writer 首轮并发数及四个默认关闭的开关：跨线联合审阅、逐条材料取舍、普通交流轮次门槛、受保护 Event 后续追加。联合审阅核对同一聊天中由明确跨线消息连接的最多三条话题线；轮次门槛要求至少两轮完整交流；受保护追加原样保留旧正文，只添加新段。保存后用于新批次，不改已有记忆或已冻结任务。</p>
-      <p>在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置</SettingsLink>选择 API 时，由 Serein 向各阶段所选上游发请求；选 Agent 时，由已认证的外部执行器领取任务，实际模型调用和费用取决于它的实现。生成 Event 后，若启用了打标或检索索引，后台还可能分别调用打标模型或 Embedding；它们不属于上述三阶段。关闭自动摘要会停止定时整理调用，但原话仍保存，手动“继续整理”和其他独立功能仍可能调用各自模型。</p>
+      <p>在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置</SettingsLink>选择 API 时，由 Lattice 向各阶段所选上游发请求；选 Agent 时，由已认证的外部执行器领取任务，实际模型调用和费用取决于它的实现。生成 Event 后，若启用了打标或检索索引，后台还可能分别调用打标模型或 Embedding；它们不属于上述三阶段。关闭自动摘要会停止定时整理调用，但原话仍保存，手动“继续整理”和其他独立功能仍可能调用各自模型。</p>
       <p>模型结果可能有遗漏或误解；重要 Event 请对照绑定原话核对。三阶段选择、执行方式及模型超时在<SettingsLink tab="configuration" onOpen={onOpenSettingsTab}>配置页</SettingsLink>，上游地址与密钥在<SettingsLink tab="models" onOpen={onOpenSettingsTab}>模型页</SettingsLink>。</p>
     </section>
     </div>

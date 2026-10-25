@@ -4,10 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from serein.compat.germany.semantic_router import SemanticRecallRouter,build_route_index
-from serein.compat.germany.domain_policy import DomainRecallPolicy
-from serein.compat.publication import route_data
-from serein.recall.routing import route_query
+from lattice.compat.germany.semantic_router import SemanticRecallRouter,build_route_index
+from lattice.compat.germany.domain_policy import DomainRecallPolicy
+from lattice.compat.publication import route_data
+from lattice.recall.routing import route_query
 
 
 class Embedding:
@@ -53,8 +53,8 @@ def test_published_domain_updates_are_current_and_versioned(tmp_path):
 @pytest.fixture
 def upgraded(tmp_path):
     import sqlite3
-    from serein.config import Settings
-    from serein.bootstrap import initialize
+    from lattice.config import Settings
+    from lattice.bootstrap import initialize
     background=tmp_path/'scene-linker-background.yaml'
     background.write_text('scene_linker: {enabled: false}\n','utf-8')
     route_path=tmp_path/'routes.json'
@@ -67,7 +67,7 @@ def upgraded(tmp_path):
     with sqlite3.connect(settings.index) as conn:
         conn.execute("INSERT INTO settings VALUES ('embedding_profile',?)",(json.dumps(profile),))
         conn.execute("INSERT INTO settings VALUES ('embedding_dimension','2')")
-    prepared={'format':'serein-query-routes-v1','profile':profile,'dimension':2,'generation':'fixture',
+    prepared={'format':'lattice-query-routes-v1','profile':profile,'dimension':2,'generation':'fixture',
         'policy':{'min_score':.72,'min_margin':.06,'aggregation_top_k':1,'boundary_veto_enabled':True,
                   'boundary_veto_min_score':.62,'boundary_veto_max_deficit':.03},
         'routes':[{'name':'present_chitchat','action':'skip','threshold':.6,'vectors':[[1,0]]}],
@@ -80,9 +80,9 @@ def upgraded(tmp_path):
 def test_upgrade_chat_uses_prepared_routes_without_publishing_or_reembedding(upgraded,monkeypatch,directories):
     import yaml
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.adapters.embedding import EmbeddingClient
-    from serein.compat.publication import recall_policy_data
+    from lattice.api.http import create_app
+    from lattice.adapters.embedding import EmbeddingClient
+    from lattice.compat.publication import recall_policy_data
     from test_public_settings import configure
     settings,background,route_path=upgraded
     if directories:
@@ -103,8 +103,8 @@ def test_upgrade_chat_uses_prepared_routes_without_publishing_or_reembedding(upg
     async def complete(model,payload,**kw):
         calls.append('chat')
         return {'choices':[{'message':{'role':'assistant','content':'synthetic answer'},'finish_reason':'stop'}]}
-    monkeypatch.setattr('serein.api.chat.complete',complete)
-    response=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'upgrade-fixture'},
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
+    response=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'upgrade-fixture'},
         json={'messages':[{'role':'user','content':'hello'}]})
     assert response.status_code==200,response.text
     assert calls==['query','chat']
@@ -114,9 +114,9 @@ def test_upgrade_chat_uses_prepared_routes_without_publishing_or_reembedding(upg
 
 def test_background_only_keeps_public_domain_editor_and_custom_exclusions(upgraded,monkeypatch):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.recall.service import Recall
-    from serein.adapters.embedding import EmbeddingClient
+    from lattice.api.http import create_app
+    from lattice.recall.service import Recall
+    from lattice.adapters.embedding import EmbeddingClient
     settings,_,_=upgraded
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     custom={'key':'reading','label':'Reading','description':'Books','policy':'excluded'}
@@ -129,8 +129,8 @@ def test_background_only_keeps_public_domain_editor_and_custom_exclusions(upgrad
 
 
 def test_existing_publication_wins_and_invalid_publication_never_falls_back(upgraded,monkeypatch):
-    from serein.compat.publication import published_policy,recall_policy_data
-    from serein.configured_models import memory_status
+    from lattice.compat.publication import published_policy,recall_policy_data
+    from lattice.configured_models import memory_status
     settings,background,_=upgraded
     source=settings.database.parent/'source.json';index=settings.database.parent/'published-index.json'
     source.write_text(json.dumps({'schema_version':1,'dataset_version':1,'routes':[
@@ -163,8 +163,8 @@ def test_existing_publication_wins_and_invalid_publication_never_falls_back(upgr
 
 @pytest.mark.parametrize('damage',['missing','profile','dimension','boundary','json','domain'])
 def test_readiness_validates_prepared_and_published_inputs_without_provider_calls(upgraded,monkeypatch,damage):
-    from serein.configured_models import memory_status
-    from serein.adapters.embedding import EmbeddingClient
+    from lattice.configured_models import memory_status
+    from lattice.adapters.embedding import EmbeddingClient
     settings,_,path=upgraded
     monkeypatch.setattr(EmbeddingClient,'_request',lambda *a,**k:pytest.fail('Offline check called provider'))
     data=json.loads(path.read_text('utf-8'))

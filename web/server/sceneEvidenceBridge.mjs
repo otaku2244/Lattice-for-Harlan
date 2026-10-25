@@ -48,7 +48,7 @@ export function buildSceneEvidenceRefs(messages, selections) {
       content,
       content_sha256: contentSha256(content),
       evidence_kind: evidenceKind,
-      binding_method: "serein_manual_selection",
+      binding_method: "lattice_manual_selection",
     };
   });
 }

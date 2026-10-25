@@ -5,9 +5,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from serein.adapters.token_window import TokenWindow
-from serein.adapters.reranker import RerankerClient
-from serein.recall.rendering import render
+from lattice.adapters.token_window import TokenWindow
+from lattice.adapters.reranker import RerankerClient
+from lattice.recall.rendering import render
 
 
 @pytest.fixture
@@ -91,8 +91,8 @@ def test_provider_instruction_template_cannot_claim_pair_budget(tokenizer_path):
 
 
 def test_optional_window_changes_index_fingerprint_only_when_configured(tmp_path):
-    from serein.config import Settings
-    from serein.configured_models import model_index
+    from lattice.config import Settings
+    from lattice.configured_models import model_index
     settings=Settings(tmp_path/'memory.db',tmp_path/'index.db')
     model={'id':'embed','model':'synthetic','base_url':'http://127.0.0.1'}
     assert model_index(settings,model)==model_index(settings,{**model,'tokenizer':None})
@@ -101,12 +101,12 @@ def test_optional_window_changes_index_fingerprint_only_when_configured(tmp_path
 
 def test_embedding_preparation_and_passages_send_tail_without_truncation(tmp_path,tokenizer_path):
     import sqlite3
-    from serein.config import Settings
-    from serein.core.store import Store
-    from serein.recall.index import build_index
-    from serein.recall.passages import fill_passages
-    from serein.recall.vectors import fill_vectors
-    from serein.adapters.embedding import EmbeddingClient
+    from lattice.config import Settings
+    from lattice.core.store import Store
+    from lattice.recall.index import build_index
+    from lattice.recall.passages import fill_passages
+    from lattice.recall.vectors import fill_vectors
+    from lattice.adapters.embedding import EmbeddingClient
     body='inspection light window unchanged '*90+'spare key K-47 blue toolbox second layer'
     database,index=tmp_path/'memory.db',tmp_path/'index.db'
     with Store(database) as store: store.create('long','event','inspection',body)
@@ -154,7 +154,7 @@ def test_tail_fact_survives_actual_delivery_budget(tokenizer_path,budget):
 
 
 def test_short_scene_keeps_all_discontinuous_evidence_in_one_pair(tokenizer_path):
-    from serein.recall.passages import regions
+    from lattice.recall.passages import regions
     rank=RerankerClient('http://127.0.0.1/rerank','synthetic',api_key='',
         tokenizer={'path':tokenizer_path,'max_tokens':512})
     body='inspection light\n## comment\nPRIVATE CONTEXT\n## spare key\nK-47 blue toolbox second layer\n'
@@ -186,10 +186,10 @@ def test_empty_scene_excerpt_is_safely_skipped():
 
 def test_empty_scene_candidate_does_not_fail_recall(tmp_path,tokenizer_path,monkeypatch):
     import sqlite3
-    from serein.config import Settings
-    from serein.core.store import Store
-    from serein.recall.index import build_index
-    from serein.recall.service import Recall
+    from lattice.config import Settings
+    from lattice.core.store import Store
+    from lattice.recall.index import build_index
+    from lattice.recall.service import Recall
     profile=dict(model='synthetic',provider_host='127.0.0.1',query_instruction='',document_instruction='',max_chars=6000)
     settings=Settings(tmp_path/'memory.db',tmp_path/'index.db',embedding={'endpoint':'unused'},
         recall={'routing_file':'synthetic-routes'})
@@ -204,8 +204,8 @@ def test_empty_scene_candidate_does_not_fail_recall(tmp_path,tokenizer_path,monk
     class Embedding:
         def __init__(self,*args,**kwargs):pass
         def query(self,text):return dict(query=text,profile=profile,embedding=[1.,0.])
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient',Embedding)
-    monkeypatch.setattr('serein.recall.routing.route_query',lambda *a,**kw:{'route':'recall_needed','action':'recall'})
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient',Embedding)
+    monkeypatch.setattr('lattice.recall.routing.route_query',lambda *a,**kw:{'route':'recall_needed','action':'recall'})
     rank=RerankerClient('http://127.0.0.1/rerank','synthetic',api_key='',
         tokenizer={'path':tokenizer_path,'max_tokens':512})
     requests=[]

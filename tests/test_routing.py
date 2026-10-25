@@ -3,18 +3,18 @@ import math
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index
-from serein.recall.routing import route_query
-from serein.recall.service import Recall
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index
+from lattice.recall.routing import route_query
+from lattice.recall.service import Recall
 
 
 @pytest.fixture
 def routes(tmp_path):
     path = tmp_path / 'routes.json'
     profile = dict(model='test', provider_host='test.invalid', query_instruction='', document_instruction='', max_chars=6000)
-    data = {'format':'serein-query-routes-v1', 'profile':profile, 'dimension':2, 'generation':'test-v1',
+    data = {'format':'lattice-query-routes-v1', 'profile':profile, 'dimension':2, 'generation':'test-v1',
             'policy':dict(min_score=.72,min_margin=.06,aggregation_top_k=1,boundary_veto_enabled=True,
                           boundary_veto_min_score=.62,boundary_veto_max_deficit=.03),
             'routes':[dict(name='present_chitchat',action='skip',threshold=.6,vectors=[[1,0]]),
@@ -56,7 +56,7 @@ def routed_recall(routes, tmp_path, monkeypatch):
         def query(self,text):
             embedded.append(text)
             return dict(query=text,profile=data['profile'],embedding=[1,0])
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient',Embedding)
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient',Embedding)
 
     def rank(query, documents):
         scored.append((query, documents))
@@ -84,7 +84,7 @@ def test_published_skip_stops_before_candidate_retrieval(routed_recall, monkeypa
     def unexpected_candidates(*args, **kwargs):
         pytest.fail('A final skip must stop before opening candidate retrieval')
 
-    monkeypatch.setattr('serein.recall.typed_surface.run', unexpected_candidates)
+    monkeypatch.setattr('lattice.recall.typed_surface.run', unexpected_candidates)
     query = '还记得雨天相逢吗？'
     result = engine.run(query, method='semantic', min_cosine=.5)
     assert embedded == [query] and not scored

@@ -7,7 +7,7 @@ export function GardenPage({ onReady }) {
   useEffect(() => {
     const receive = event => {
       if (event.origin === location.origin && event.source === frame.current?.contentWindow
-        && event.data?.type === 'serein:garden-ready') onReady();
+        && event.data?.type === 'lattice:garden-ready') onReady();
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);

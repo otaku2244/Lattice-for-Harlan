@@ -41,9 +41,9 @@ const navItems = [
 export function Sidebar({ activeArea, onNavigate, onOpenSettings }) {
   return (
     <aside className="sidebar" aria-label="主要导航">
-      <div className="sidebar__brand" aria-label="Serein">
-        <img className="sidebar__mark" src={`${import.meta.env.BASE_URL}assets/serein-mark.svg`} width="28" height="28" alt="" />
-        <span className="sidebar__name">Serein</span>
+      <div className="sidebar__brand" aria-label="晶格 · LATTICE">
+        <img className="sidebar__mark" src={`${import.meta.env.BASE_URL}assets/lattice-mark.svg`} width="28" height="28" alt="" />
+        <span className="sidebar__name">晶格 · LATTICE</span>
       </div>
       <nav className="sidebar__nav">
         {navItems.map(({ label, icon: Icon }) => {

@@ -42,7 +42,7 @@ def test_shell_path_preserves_profiles_and_only_adds_one_entry(tmp_path,monkeypa
     module.shell_path(directory,tmp_path);module.shell_path(directory,tmp_path)
     for name in ('.profile','.bashrc','.zshrc'):
         text=(tmp_path/name).read_text()
-        assert text.count('# Serein se command')==1
+        assert text.count('# Lattice se command')==1
     assert (tmp_path/'.bashrc').read_text().startswith(original)
 
 
@@ -57,7 +57,7 @@ def test_windows_se_selects_current_folder_and_refuses_unrelated_folder(tmp_path
         result=subprocess.run([os.environ['COMSPEC'],'/d','/c',str(target)],cwd=root,capture_output=True,text=True)
         assert result.returncode==0 and str(root) in result.stdout
     result=subprocess.run([os.environ['COMSPEC'],'/d','/c',str(target)],cwd=tmp_path,capture_output=True,text=True)
-    assert result.returncode==2 and 'Serein directory' in result.stderr
+    assert result.returncode==2 and 'Lattice directory' in result.stderr
 
 
 @pytest.mark.skipif(os.name=='nt' or not shutil.which('bash'),reason='POSIX shell entry')
@@ -71,4 +71,4 @@ def test_posix_se_selects_current_folder_and_refuses_unrelated_folder(tmp_path,m
         result=subprocess.run([str(target)],cwd=root,capture_output=True,text=True)
         assert result.returncode==0 and str(root) in result.stdout
     result=subprocess.run([str(target)],cwd=tmp_path,capture_output=True,text=True)
-    assert result.returncode==2 and 'Serein directory' in result.stderr
+    assert result.returncode==2 and 'Lattice directory' in result.stderr

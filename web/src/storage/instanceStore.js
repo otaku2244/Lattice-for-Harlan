@@ -3,12 +3,12 @@ import { settingsResponseError } from "./settingsError.js";
 
 export function identityName(role) {
   return role === "user"
-    ? readLocalPreference("serein.awake.name.user", "User")
-    : readLocalPreference("serein.awake.name.assistant", "AI");
+    ? readLocalPreference("lattice.awake.name.user", "User")
+    : readLocalPreference("lattice.awake.name.assistant", "AI");
 }
 
 export async function instanceSettings(changes) {
-  const response = await fetch("/__serein/settings", {
+  const response = await fetch("/__lattice/settings", {
     method: changes ? "PATCH" : "GET",
     headers: changes ? { "Content-Type": "application/json" } : {},
     ...(changes ? { body: JSON.stringify(changes) } : {}),
@@ -17,10 +17,10 @@ export async function instanceSettings(changes) {
     throw await settingsResponseError(response);
   }
   const result = await response.json();
-  storeLocalPreference("serein.awake.name.user", result.identity.user_name);
-  storeLocalPreference("serein.awake.name.assistant", result.identity.ai_name);
-  storeLocalPreference("serein.awake.meetingDate", result.identity.meeting_date ?? "");
-  window.dispatchEvent(new CustomEvent('serein:features',{detail:result.features}));
-  if(changes)window.dispatchEvent(new CustomEvent('serein:settings-saved',{detail:result}));
+  storeLocalPreference("lattice.awake.name.user", result.identity.user_name);
+  storeLocalPreference("lattice.awake.name.assistant", result.identity.ai_name);
+  storeLocalPreference("lattice.awake.meetingDate", result.identity.meeting_date ?? "");
+  window.dispatchEvent(new CustomEvent('lattice:features',{detail:result.features}));
+  if(changes)window.dispatchEvent(new CustomEvent('lattice:settings-saved',{detail:result}));
   return result;
 }

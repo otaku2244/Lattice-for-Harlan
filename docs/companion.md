@@ -28,7 +28,7 @@
 
 开关打开时，MCP 动态注册三个 memo 工具；关掉后 tools/list 不再返回，旧客户端缓存的 tools/call 也会被拒绝。页面管理 API 独立存在，关闭仍可整理备忘。
 
-聊天代理转发客户端提供的 tools 和工具结果，不会自行执行模型返回的 function call。客户端/agent 需要连接 Serein MCP，或调用扩展 HTTP API 后把 tool result 续回同一聊天。仅在网页启用备忘不会自动替聊天客户端配置 MCP。
+聊天代理转发客户端提供的 tools 和工具结果，不会自行执行模型返回的 function call。客户端/agent 需要连接 Lattice MCP，或调用扩展 HTTP API 后把 tool result 续回同一聊天。仅在网页启用备忘不会自动替聊天客户端配置 MCP。
 
 ## 心绪（Persona）
 

@@ -9,7 +9,7 @@ export function materialCount(item) {
   return Object.keys(labels).reduce((sum, kind) => sum + new Set(item[`source_${kind}_ids`] || []).size, 0);
 }
 async function request(body, signal) {
-  const response = await fetch('/__serein/memory/revision-materials', {
+  const response = await fetch('/__lattice/memory/revision-materials', {
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), signal,
   });
   const result = await response.json();

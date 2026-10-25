@@ -3,16 +3,16 @@ import sqlite3
 
 import pytest
 
-from serein.compat.events import Events
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index,Search
-from serein.recall.worker import update_pending
+from lattice.compat.events import Events
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index,Search
+from lattice.recall.worker import update_pending
 from test_live_events import item
 
 
 def test_failed_provider_is_retried_and_old_backlog_does_not_block_new_event(tmp_path):
-    settings=Settings(tmp_path/'serein.db',tmp_path/'index.sqlite',writable=True)
+    settings=Settings(tmp_path/'lattice.db',tmp_path/'index.sqlite',writable=True)
     with Store(settings.database) as store:
         store.create('scene_backlog','scene','旧的长篇','过去的一段经历。'*50)
     events=Events(settings.database,initialize=True)

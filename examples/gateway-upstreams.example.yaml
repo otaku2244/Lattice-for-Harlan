@@ -5,7 +5,7 @@ gateway:
     - name: provider-a
       protocol: openai
       base_url: https://provider-a.example/v1
-      api_key_env: SEREIN_PROVIDER_A_KEY
+      api_key_env: LATTICE_PROVIDER_A_KEY
       default_model: chat-fast
       prompt_cache: openai
       models:
@@ -19,7 +19,7 @@ gateway:
     - name: provider-b
       protocol: anthropic
       base_url: https://provider-b.example/v1
-      api_key_env: SEREIN_PROVIDER_B_KEY
+      api_key_env: LATTICE_PROVIDER_B_KEY
       anthropic_version: '2023-06-01'
       prompt_cache: anthropic_explicit
       prompt_cache_retention: 1h

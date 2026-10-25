@@ -9,13 +9,13 @@ import {
   X,
 } from "@phosphor-icons/react";
 
-function sereinSceneId(scene) {
+function latticeSceneId(scene) {
   const source = scene?.sources?.find((item) => String(item?.id || "").startsWith("manual_source:"));
   return source ? source.id.slice("manual_source:".length) : "";
 }
 
 export function SceneCueEditor({ scene, onSaved }) {
-  const sourceSceneId = useMemo(() => sereinSceneId(scene), [scene]);
+  const sourceSceneId = useMemo(() => latticeSceneId(scene), [scene]);
   const [loadState, setLoadState] = useState("idle");
   const [saveState, setSaveState] = useState("idle");
   const [liveScene, setLiveScene] = useState(null);
@@ -34,7 +34,7 @@ export function SceneCueEditor({ scene, onSaved }) {
     setLoadState("loading");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/read-scene", {
+      const response = await fetch("/__lattice/memory/read-scene", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId: sourceSceneId }),
@@ -89,7 +89,7 @@ export function SceneCueEditor({ scene, onSaved }) {
     setSaveState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/edit-scene-cues", {
+      const response = await fetch("/__lattice/memory/edit-scene-cues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

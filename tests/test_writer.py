@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from serein.application import Application
-from serein.config import Settings
-from serein.core import Store, Conflict
-from serein.core.search import build_index
+from lattice.application import Application
+from lattice.config import Settings
+from lattice.core import Store, Conflict
+from lattice.core.search import build_index
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ def test_bindings_suppress_without_archiving_and_last_event_source_cannot_vanish
 
 
 def test_promote_event_creates_edited_scene_and_keeps_original_evidence(writable):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(writable._settings.database, {"features": {"event_to_scene": True}})
     event = writable.write('event-original', 'save', {"kind": "event", "title": "出行摘要",
         "body_md": "我们聊了第一次出发。", "sources": [
@@ -91,7 +91,7 @@ def test_promote_event_creates_edited_scene_and_keeps_original_evidence(writable
 
 
 def test_promote_event_rejects_stale_revision_without_creating_scene(writable):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(writable._settings.database, {"features": {"event_to_scene": True}})
     event = writable.write('event-original', 'save', {"kind": "event", "title": "摘要",
         "body_md": "当时说了什么", "sources": [{"source_key": "source:1", "content": "原话"}]})
@@ -106,8 +106,8 @@ def test_promote_event_rejects_stale_revision_without_creating_scene(writable):
 
 
 def test_promotion_disabled_blocks_direct_and_cached_calls_and_keeps_receipts(writable):
-    from serein.deployment import save_settings
-    from serein.extensions.optional import tools_for
+    from lattice.deployment import save_settings
+    from lattice.extensions.optional import tools_for
     event_id = writable.write('source-event', 'save', event())['id']
     request = {'event_id':event_id, 'expected_revision':1, 'title':'Scene', 'body_md':'Edited body'}
     with pytest.raises(ValueError, match='disabled'):
@@ -181,8 +181,8 @@ def test_read_only_profile_rejects_write(writable):
 
 @pytest.mark.parametrize('kind', ['event','scene'])
 def test_favorite_save_and_existing_state_are_atomic_and_retry_safe(writable,kind):
-    from serein.deployment import save_settings
-    from serein.core.personal import Personal
+    from lattice.deployment import save_settings
+    from lattice.core.personal import Personal
     db=writable._settings.database;personal=Personal(db)
     save_settings(db,{'features':{'favorites':True}})
     saved=writable.write('favorite-save','save',{**event(),'kind':kind,'favorite':True})
@@ -206,8 +206,8 @@ def test_favorite_save_and_existing_state_are_atomic_and_retry_safe(writable,kin
 
 
 def test_favorite_validation_rolls_back_and_switch_preserves_ordinary_writes(writable):
-    from serein.deployment import save_settings
-    from serein.core.personal import Personal
+    from lattice.deployment import save_settings
+    from lattice.core.personal import Personal
     db=writable._settings.database
     with pytest.raises(ValueError,match='disabled'):writable.write('disabled','save',{**event(),'favorite':True})
     save_settings(db,{'features':{'favorites':True}})
@@ -227,8 +227,8 @@ def test_favorite_validation_rolls_back_and_switch_preserves_ordinary_writes(wri
 
 
 def test_candidate_favorite_waits_for_accept_and_rechecks_feature(writable):
-    from serein.deployment import save_settings
-    from serein.core.personal import Personal
+    from lattice.deployment import save_settings
+    from lattice.core.personal import Personal
     db=writable._settings.database
     save_settings(db,{'features':{'favorites':True}})
     candidate=writable.write('propose-favorite','propose',{**event(),'favorite':True})

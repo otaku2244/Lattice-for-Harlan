@@ -2,10 +2,10 @@ import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from serein.api.http import create_app
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.deployment import task_model
+from lattice.api.http import create_app
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.deployment import task_model
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def upstreams():
     return [
         {'name':'provider-a','base_url':'https://a.example/v1','api_key':'synthetic-a-secret',
          'models':['chat-fast',{'id':'a-smart','upstream_model':'shared-model'}]},
-        {'name':'provider-b','base_url':'https://b.example/v1','api_key_env':'SEREIN_TEST_PROVIDER_B',
+        {'name':'provider-b','base_url':'https://b.example/v1','api_key_env':'LATTICE_TEST_PROVIDER_B',
          'protocol':'anthropic','prompt_cache':'anthropic_explicit','prompt_cache_retention':'1h',
          'models':[{'id':'b-smart','upstream_model':'shared-model'}]},
     ]
@@ -28,7 +28,7 @@ def upstreams():
 
 def test_aggregate_and_route_every_configured_upstream(deployment,monkeypatch):
     settings,client=deployment
-    monkeypatch.setenv('SEREIN_TEST_PROVIDER_B','synthetic-b-secret')
+    monkeypatch.setenv('LATTICE_TEST_PROVIDER_B','synthetic-b-secret')
     saved=client.patch('/v1/settings',json={'upstreams':upstreams()})
     assert saved.status_code==200,saved.text
     assert 'synthetic-a-secret' not in saved.text and 'synthetic-b-secret' not in saved.text
@@ -76,8 +76,8 @@ def test_template_import_and_shared_task_choices(deployment):
     assert task_model(settings.database,'chat')['model']=='actual-assistant'
     for task in ('writer','relations','dreams','narrative_scout','event_pipeline'):
         assert task_model(settings.database,task)['model']=='actual-assistant'
-    from serein.compat.jobs import BackgroundJobs
-    from serein.model_runtime import TaskClient
+    from lattice.compat.jobs import BackgroundJobs
+    from lattice.model_runtime import TaskClient
     assert isinstance(BackgroundJobs(settings,features={'dreams'}).dreams.client,TaskClient)
 
 
@@ -134,7 +134,7 @@ def test_display_names_hide_internal_ids_and_auxiliary_models(deployment):
 
 
 def test_legacy_models_share_upstream_editor_and_keep_credentials(deployment):
-    from serein.deployment import read_settings
+    from lattice.deployment import read_settings
     settings,client=deployment
     models=[{'id':key,'model':model,'label':label,'base_url':'https://provider.example/v1',
              'api_key':'synthetic-key'} for key,model,label in [('old-chat','chat-model','Chat'),('old-embed','embed-model','Embedding')]]

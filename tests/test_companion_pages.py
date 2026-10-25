@@ -1,8 +1,8 @@
 import asyncio
 from test_public_settings import deployment
-from serein.chat_features import prepare, delivered
-from serein.compat.persona_engine import PersonaStateEngine
-from serein.deployment import read_settings
+from lattice.chat_features import prepare, delivered
+from lattice.compat.persona_engine import PersonaStateEngine
+from lattice.deployment import read_settings
 
 
 def test_disabled_memo_editor_persists_without_enabling_tools_or_chat(deployment):
@@ -39,7 +39,7 @@ def test_persona_is_read_only_and_reads_runtime_state(deployment):
     data=client.get('/v1/companion/persona').json()
     assert data['enabled'] is False and data['sessions']==[] and data['session'] is None
     assert client.put('/v1/companion/persona',json={'relationship':{'trust':.73}}).status_code==405
-    engine=PersonaStateEngine({'serein_database':settings.database})
+    engine=PersonaStateEngine({'lattice_database':settings.database})
     engine.get_current_state('synthetic-window')
     with engine._connect() as conn:
         conn.execute('UPDATE persona_global_state SET trust=.73')
@@ -52,7 +52,7 @@ def test_persona_is_read_only_and_reads_runtime_state(deployment):
 
 def test_editor_reads_do_not_decay_sessions_and_inputs_are_validated(deployment):
     settings,client=deployment
-    engine=PersonaStateEngine({'serein_database':settings.database})
+    engine=PersonaStateEngine({'lattice_database':settings.database})
     engine.get_current_state('old-window')
     with engine._connect() as conn:
         conn.execute("UPDATE persona_session_state SET tenderness=.9,updated_at='2020-01-01T00:00:00+00:00'")
@@ -65,7 +65,7 @@ def test_editor_reads_do_not_decay_sessions_and_inputs_are_validated(deployment)
 
 def test_memo_schedule_snooze_and_scoped_delivery(deployment):
     from datetime import datetime, timedelta
-    from serein.compat.memo_store import ReminderStore, LOCAL_TZ
+    from lattice.compat.memo_store import ReminderStore, LOCAL_TZ
     settings,client=deployment
     stamp=datetime.now(LOCAL_TZ)
     body={'title':'合成日程','content':'检查书单','repeat_rule':'every_n_rounds','interval_rounds':6,
@@ -75,7 +75,7 @@ def test_memo_schedule_snooze_and_scoped_delivery(deployment):
     response=client.post('/v1/companion/memos',json=body)
     assert response.status_code==200,response.text
     key=response.json()['id']
-    store=ReminderStore({'serein_database':settings.database})
+    store=ReminderStore({'lattice_database':settings.database})
     due=lambda at,session='schedule-window':store.due(session_id=session,channel='gateway',round_id=10,now=at)
     assert key in [item['id'] for item in due(stamp)]
     assert not due(stamp,'other-window')

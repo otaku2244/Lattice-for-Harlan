@@ -1,4 +1,4 @@
-from serein.compat.germany.narrative_revision_scout import normalize_new_roll_candidates
+from lattice.compat.germany.narrative_revision_scout import normalize_new_roll_candidates
 
 
 def test_auto_arc_scout_routes_diary_to_existing_arc_and_rejects_invented_target():

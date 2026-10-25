@@ -5,15 +5,15 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
-from serein.compat.dreams import Dreams
-from serein.compat.background import DreamMaterialReader
-from serein.core.store import Store
+from lattice.compat.dreams import Dreams
+from lattice.compat.background import DreamMaterialReader
+from lattice.core.store import Store
 from test_live_clients import live
 
 
 def test_dream_uses_sqlite_and_surfaces_once_without_files(live, monkeypatch):
     settings,client=live
-    monkeypatch.delenv('SEREIN_DREAM_API_KEY',raising=False)
+    monkeypatch.delenv('LATTICE_DREAM_API_KEY',raising=False)
     engine=Dreams(settings)
     stamp=(datetime.now(timezone.utc)-timedelta(hours=5)).isoformat()
     record=engine._write_record({'dream_id':'dream_test','generated_at':stamp,'local_date':'2026-09-07',
@@ -31,7 +31,7 @@ def test_dream_uses_sqlite_and_surfaces_once_without_files(live, monkeypatch):
 
 def test_generated_dream_survives_engine_restart(live, monkeypatch):
     settings,_=live
-    monkeypatch.delenv('SEREIN_DREAM_API_KEY',raising=False)
+    monkeypatch.delenv('LATTICE_DREAM_API_KEY',raising=False)
     engine=Dreams(settings)
     engine.client=object()
     materials=[{'id':'scene_test','content':'这是一条测试记忆。','metadata':{'created':datetime.now(timezone.utc).isoformat()}}]*5
@@ -74,7 +74,7 @@ def test_dream_is_after_four_and_probability_is_saved(live,monkeypatch):
     assert asyncio.run(engine.run_due(reader,now=early))['reason']=='too_early'
     saved=client.patch('/v1/settings',json={'dream':{'daily_probability':0}})
     assert saved.status_code==200,saved.text
-    monkeypatch.setattr('serein.compat.germany.dream_engine.random.random',lambda:0)
+    monkeypatch.setattr('lattice.compat.germany.dream_engine.random.random',lambda:0)
     result=asyncio.run(engine.run_due(reader,now=early+timedelta(minutes=2)))
     assert result['reason']=='daily_probability_miss'
     assert engine.daily_hour==4 and engine.daily_probability==0

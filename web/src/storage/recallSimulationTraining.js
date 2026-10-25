@@ -1,12 +1,12 @@
 import { initializePersonal, savePersonal } from "./personalStore.js";
-export const recallSimulationTrainingStorageKey = "serein.basement.recall-simulation-training.v1";
+export const recallSimulationTrainingStorageKey = "lattice.basement.recall-simulation-training.v1";
 
-const batchStorageKey = "serein.basement.recall-simulation-training-batch.v1";
+const batchStorageKey = "lattice.basement.recall-simulation-training-batch.v1";
 const validActions = new Set(["skip", "recall"]);
 const validAblationModes = new Set(["normal", "without_cues", "without_embedding"]);
 const validTelemetryStatuses = new Set(["fresh", "stale", "unavailable"]);
 const validCandidateRelevances = new Set(["core", "weak", "irrelevant"]);
-export const EVALUATION_GROUPING_CONTRACT_VERSION = "serein.evaluation-group.v1";
+export const EVALUATION_GROUPING_CONTRACT_VERSION = "lattice.evaluation-group.v1";
 export const EVALUATION_GROUPING_HASH_ALGORITHM = "fnv1a32";
 const candidateSourceEnums = new Set([
   "exact_anchor",
@@ -806,15 +806,15 @@ export async function upsertRecallSimulationTrainingLabel(input) {
   }
   try { await savePersonal("recall_simulation", next.id, next); }
   catch (error) {
-    window.localStorage.setItem("serein.personal.unsaved-simulation.v1", JSON.stringify(next));
+    window.localStorage.setItem("lattice.personal.unsaved-simulation.v1", JSON.stringify(next));
     throw error;
   }
-  window.localStorage.removeItem("serein.personal.unsaved-simulation.v1");
+  window.localStorage.removeItem("lattice.personal.unsaved-simulation.v1");
   window.localStorage.setItem(recallSimulationTrainingStorageKey, JSON.stringify({
     schemaVersion: 3,
     updatedAt: next.updatedAt,
     labels,
   }));
-  window.dispatchEvent(new CustomEvent("serein:recall-simulation-training-updated"));
+  window.dispatchEvent(new CustomEvent("lattice:recall-simulation-training-updated"));
   return { status, labels, label: next };
 }

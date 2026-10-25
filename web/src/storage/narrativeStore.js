@@ -181,14 +181,14 @@ function projectLiveRoll(item, index, fallback) {
       : fallback?.sceneNames || item.linked_scene_ids || [],
     revision: Number(item.revision || 1),
     documentHash: String(item.document_sha256 || ""),
-    sourceKind: "serein-narrative-live-readonly",
+    sourceKind: "lattice-narrative-live-readonly",
   };
 }
 
 export async function previewNarrativeRoll(roll, mode, proposedMaterialIds, proposedBody = "") {
   const signal = AbortSignal.timeout(360_000);
   try {
-    let response = await fetch("/__serein/narrative-preview", {
+    let response = await fetch("/__lattice/narrative-preview", {
       method: "POST",
       signal,
       headers: { "Content-Type": "application/json" },
@@ -215,7 +215,7 @@ export async function previewNarrativeRoll(roll, mode, proposedMaterialIds, prop
       do {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         signal.throwIfAborted();
-        response = await fetch(`/__serein/narrative-preview?jobId=${encodeURIComponent(jobId)}`, {
+        response = await fetch(`/__lattice/narrative-preview?jobId=${encodeURIComponent(jobId)}`, {
           cache: "no-store",
           signal,
         });
@@ -235,7 +235,7 @@ export async function previewNarrativeRoll(roll, mode, proposedMaterialIds, prop
 }
 
 export async function saveNarrativeRollBody(roll, body, preview) {
-  const response = await fetch("/__serein/narrative-save", {
+  const response = await fetch("/__lattice/narrative-save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -262,7 +262,7 @@ export async function saveNarrativeRollBody(roll, body, preview) {
 
 export async function loadNarrativeRolls() {
   try {
-    const response = await fetch("/__serein/live/narratives", {
+    const response = await fetch("/__lattice/live/narratives", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
@@ -295,7 +295,7 @@ export async function uploadNarrativeMaterial(file) {
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   }
-  const response = await fetch("/__serein/narrative-material-upload", {
+  const response = await fetch("/__lattice/narrative-material-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -144,9 +144,9 @@ function openSceneInMemory(item) {
   if (item.source_kind === "event" || String(item.id || "").startsWith("event:")) return;
   const sceneId = item.bucket_id || item.moment_id || String(item.id || "").replace(/^scene:/, "").split("#").pop();
   if (!sceneId) return;
-  window.localStorage.setItem("serein.memory.open-source-id", sceneId);
+  window.localStorage.setItem("lattice.memory.open-source-id", sceneId);
   window.location.hash = "#memory";
-  window.dispatchEvent(new CustomEvent("serein:open-memory-scene", { detail: { sourceId: sceneId } }));
+  window.dispatchEvent(new CustomEvent("lattice:open-memory-scene", { detail: { sourceId: sceneId } }));
 }
 
 const recallAblationOptions = [
@@ -275,10 +275,10 @@ function RecallSimulator({thresholdTrial,onClearThresholdTrial}) {
     if(thresholdTrial){setResult(null);setComparison(null);setStatus('idle');setThresholdStatus('');}
     let active=true;
     const settingsSaved=event=>setSavedThreshold(event.detail.recall?.direct_threshold ?? 0.65);
-    window.addEventListener('serein:settings-saved',settingsSaved);
+    window.addEventListener('lattice:settings-saved',settingsSaved);
     instanceSettings().then(value=>{if(active)setSavedThreshold(value.recall?.direct_threshold ?? 0.65);})
       .catch(()=>{if(active)setSavedThreshold(null);});
-    return()=>{active=false;window.removeEventListener('serein:settings-saved',settingsSaved);};
+    return()=>{active=false;window.removeEventListener('lattice:settings-saved',settingsSaved);};
   },[thresholdTrial]);
   async function saveTrialThreshold(){
     if(trialThreshold===null)return;
@@ -307,7 +307,7 @@ function RecallSimulator({thresholdTrial,onClearThresholdTrial}) {
     setComparison(null);
     const savedValue=savedThreshold,trialValue=trialThreshold??0.65;
     const requestAt=async threshold=>{
-      const response=await fetch("/__serein/gateway/recall",{
+      const response=await fetch("/__lattice/gateway/recall",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({query:text,simulation:true,simulation_scope:simulationScope,
           include_debug:true,recall_mode:"full",recall_ablation:recallAblation,direct_threshold:threshold}),
@@ -451,7 +451,7 @@ function RecallSimulator({thresholdTrial,onClearThresholdTrial}) {
           <button type="button" disabled={trialThreshold===null||trialThreshold===savedThreshold||savedThreshold===null||savingThreshold||status==='loading'} onClick={saveTrialThreshold}>保存此阈值</button>
           <button type="button" onClick={()=>{
             window.location.hash='#settings';
-            window.dispatchEvent(new CustomEvent('serein:open-settings-tab',{detail:'configuration'}));
+            window.dispatchEvent(new CustomEvent('lattice:open-settings-tab',{detail:'configuration'}));
           }}>返回配置调节</button>
         </div>
         {thresholdStatus&&<p role="status">{thresholdStatus}</p>}
@@ -1026,7 +1026,7 @@ export function DomainPolicyEditor() {
     setPublishState({ status: "idle", message: "" });
     setDatasetState({ status: "loading", message: "正在核对线上主域策略……" });
     try {
-      const response = await fetch("/__serein/settings");
+      const response = await fetch("/__lattice/settings");
       const payload = await response.json();
       if (!response.ok || !Array.isArray(payload.tagging?.domains)) {
         throw new Error(String(payload?.error || "domain_policy_dataset_unavailable"));
@@ -1064,7 +1064,7 @@ export function DomainPolicyEditor() {
     const nextVersion = snapshot.datasetVersion + 1;
     setPublishState({ status: "publishing", message: `正在发布 v${nextVersion}……` });
     try {
-      const response = await fetch("/__serein/settings", {
+      const response = await fetch("/__lattice/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1231,7 +1231,7 @@ function RouteExampleEditor() {
   const loadPublishedDataset = async () => {
     setDatasetState({ status: "loading", message: "正在核对线上版本……" });
     try {
-      const response = await fetch("/__serein/gateway/semantic-routes");
+      const response = await fetch("/__lattice/gateway/semantic-routes");
       const payload = await readRouteApiResponse(response);
       if (!response.ok) throw new Error(payload.message || payload.error || "route_dataset_unavailable");
       const nextSnapshot = routeSnapshotFromApi(payload);
@@ -1456,7 +1456,7 @@ function RouteExampleEditor() {
     setPublishState({ status: "publishing", message: `正在构建 v${nextVersion} 的全部向量……` });
     try {
       await saveQueueRef.current;
-      const response = await fetch("/__serein/gateway/semantic-routes", {
+      const response = await fetch("/__lattice/gateway/semantic-routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1648,8 +1648,8 @@ export function BasementPage() {
       if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>1)return;
       setThresholdTrial({threshold:value});setActiveTool('recall');
     };
-    window.addEventListener('serein:open-recall-simulation',openSimulation);
-    return()=>window.removeEventListener('serein:open-recall-simulation',openSimulation);
+    window.addEventListener('lattice:open-recall-simulation',openSimulation);
+    return()=>window.removeEventListener('lattice:open-recall-simulation',openSimulation);
   },[]);
 
   useEffect(() => {

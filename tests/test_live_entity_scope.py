@@ -3,8 +3,8 @@ import sqlite3
 from contextlib import closing
 from dataclasses import replace
 
-from serein.compat.entity_scope import update_scope
-from serein.compat.germany.observed_entities import ObservedEntityShadowIndex
+from lattice.compat.entity_scope import update_scope
+from lattice.compat.germany.observed_entities import ObservedEntityShadowIndex
 from test_live_clients import live
 from test_live_events import item
 

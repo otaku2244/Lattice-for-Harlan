@@ -3,10 +3,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from test_public_features import settings, ingest, output_for, synthetic_runner
-from serein.api.http import create_app
-from serein.core.store import Store, encode, digest
-from serein.core.source_scenes import find_source_scenes
-from serein.extensions import pipeline as p, pipeline_scenes as scenes
+from lattice.api.http import create_app
+from lattice.core.store import Store, encode, digest
+from lattice.core.source_scenes import find_source_scenes
+from lattice.extensions import pipeline as p, pipeline_scenes as scenes
 
 
 def bind_scene(settings, ids=(1,2), name='scene', lifecycle='active'):

@@ -2,8 +2,8 @@ import sqlite3
 
 import pytest
 
-from serein.core import Store
-from serein.recall.germany.memory_recall.observed_entities import _query_intent
+from lattice.core import Store
+from lattice.recall.germany.memory_recall.observed_entities import _query_intent
 from test_personal_recall import birthday_recall
 
 

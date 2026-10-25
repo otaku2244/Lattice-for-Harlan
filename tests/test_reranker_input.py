@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from serein.recall.reranker_input import memory_document
+from lattice.recall.reranker_input import memory_document
 
 
 def doc(body, kind='scene', title='共同经历'):

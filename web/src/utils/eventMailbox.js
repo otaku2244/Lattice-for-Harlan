@@ -22,7 +22,7 @@ export function mailboxPromotion(item, draft, operationId=createUuid()) {
     expected_queue_revision:item.queue_revision,...prose,...(cues.length?{cues}:{})};
 }
 export async function mailboxRequest(path='', body, request=fetch) {
-  const response=await request(`/__serein/event-mailbox${path}`,{method:body?'POST':'GET',cache:'no-store',
+  const response=await request(`/__lattice/event-mailbox${path}`,{method:body?'POST':'GET',cache:'no-store',
     ...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok||['conflict','error','invalid','disabled'].includes(payload?.status)) {

@@ -9,14 +9,14 @@ from fastapi.testclient import TestClient
 from test_public_features import settings, ingest, output_for
 from test_live_clients import live
 from test_live_narratives import seed as seed_narrative
-from serein.application import Application
-from serein.api.http import create_app
-from serein.chat_features import prepare, delivered, after_reply
-from serein.compat.dreams import Dreams
-from serein.core.store import Store, encode
-from serein.deployment import save_settings, read_settings, task_model
-from serein import work_tasks as work
-from serein.extensions import pipeline
+from lattice.application import Application
+from lattice.api.http import create_app
+from lattice.chat_features import prepare, delivered, after_reply
+from lattice.compat.dreams import Dreams
+from lattice.core.store import Store, encode
+from lattice.deployment import save_settings, read_settings, task_model
+from lattice import work_tasks as work
+from lattice.extensions import pipeline
 
 
 def configure(settings,features):
@@ -32,7 +32,7 @@ def test_retreat_after_reply_next_turn_only_and_durable_cooldown(settings,monkey
     async def complete(model,payload):
         calls.append((model,payload))
         return {'choices':[{'message':{'content':json.dumps({'signal':True,'kind':'conflict','confidence':.99})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     assert task_model(settings.database,'anti_retreat')['id']=='shared'
     text,receipt=asyncio.run(prepare(settings.database,'w','A disagreement',[]))
     assert text=='' and not calls
@@ -60,7 +60,7 @@ def test_retreat_after_reply_next_turn_only_and_durable_cooldown(settings,monkey
 
 def test_slow_detector_does_not_gate_response_body(settings,monkeypatch):
     configure(settings,{'anti_retreat':True})
-    from serein.api import chat
+    from lattice.api import chat
     save_settings(settings.database,{'assignments':{'chat':'shared'}})
     async def answer(*args,**kwargs):return {'choices':[{'message':{'role':'assistant','content':'Delivered now'}}]}
     monkeypatch.setattr(chat,'complete',answer)
@@ -68,7 +68,7 @@ def test_slow_detector_does_not_gate_response_body(settings,monkeypatch):
         detecting=asyncio.Event();release=asyncio.Event();sent=[]
         async def detector(*args,**kwargs):
             detecting.set();await release.wait();return {'triggered':False}
-        monkeypatch.setattr('serein.chat_features.persona_engine',lambda *args:SimpleNamespace(detect_conflict_nudge=detector))
+        monkeypatch.setattr('lattice.chat_features.persona_engine',lambda *args:SimpleNamespace(detect_conflict_nudge=detector))
         app=create_app(settings,token='synthetic',live=True)
         raw=json.dumps({'messages':[{'role':'user','content':'Question'}]}).encode()
         async def receive():return {'type':'http.request','body':raw,'more_body':False}
@@ -93,7 +93,7 @@ def test_dream_prompt_saved_and_used_without_engine_restart(settings,monkeypatch
     async def complete(model,payload):
         requests.append(payload)
         return {'choices':[{'message':{'content':'A synthetic dream.'}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     assert asyncio.run(engine._call_dream_model({}))=='A synthetic dream.'
     prompt=requests[-1]['messages'][0]['content']
     assert prompt.startswith('Synthetic main identity') and '80 到 220' in prompt
@@ -127,6 +127,40 @@ def test_narrative_main_model_preview_save_cas_and_writer_interlock(live):
     with pytest.raises(ValueError):asyncio.run(tool('read',narrative_id='narrative_test'))
 
 
+def test_narrative_main_model_update_after_saving_only_materials(live):
+    from test_live_events import item
+
+    settings, client = live
+    original, scene = seed_narrative(client, settings)
+    added = client.post('/api/fact-events/batch', json={
+        'items': [item('A later synthetic event.', 'synthetic:later')],
+    }).json()['items'][0]['item_id']
+    save_settings(settings.database, {'features': {'narrative_tools': True}})
+    tool = Application(settings).contributions.tools['narrative_volume']
+    read = asyncio.run(tool('read', narrative_id='narrative_test', mode='edit', material_ids={
+        'event_ids': [original, added], 'scene_ids': [scene],
+        'diary_ids': [], 'darkroom_ids': [], 'upload_ids': [],
+    }))
+    assert read['status'] == 'ok'
+    unchanged_body = read['narrative']['body']
+    draft = asyncio.run(tool('preview', narrative_id='narrative_test',
+        body=unchanged_body, receipt=read['receipt']))
+    saved = asyncio.run(tool('save', narrative_id='narrative_test', receipt=draft['save_arguments']))
+    assert saved['status'] == 'updated' and saved['revision'] == 2
+
+    read = asyncio.run(tool('read', narrative_id='narrative_test', mode='update'))
+    assert read['status'] == 'ok'
+    assert read['receipt']['current_body'] == unchanged_body
+    assert [row['event_id'] for row in read['receipt']['materials']['events']] == [added]
+    assert read['receipt']['material_counts']['scenes'] == 0
+    draft = asyncio.run(tool('preview', narrative_id='narrative_test',
+        body='The narrative now includes the later synthetic event.', receipt=read['receipt']))
+    assert draft['writes_performed'] == []
+    saved = asyncio.run(tool('save', narrative_id='narrative_test', receipt=draft['save_arguments']))
+    assert saved['status'] == 'updated' and saved['model_called'] is False
+    assert asyncio.run(tool('read', narrative_id='narrative_test', mode='update'))['reason'] == 'no_new_materials'
+
+
 def test_narrative_api_writer_uses_text_only(settings, monkeypatch):
     save_settings(settings.database, {'models':[
         {'id':'writer','model':'synthetic-writer','base_url':'http://127.0.0.1:9/v1'}],
@@ -136,7 +170,7 @@ def test_narrative_api_writer_uses_text_only(settings, monkeypatch):
     async def complete(model,payload):
         calls.append((model,payload))
         return {'choices':[{'message':{'content':'{"body":"A sourced sentence."}'}}]}
-    monkeypatch.setattr('serein.api.chat.complete',complete)
+    monkeypatch.setattr('lattice.api.chat.complete',complete)
     task={'prompt':'Bound text only','output_schema':{'type':'object'}}
     assert client.post('/v1/models/writer',json={**task,'image_inputs':['https://example.org/original.png']}).status_code==400
     assert calls==[]
@@ -147,11 +181,11 @@ def test_narrative_api_writer_uses_text_only(settings, monkeypatch):
     import httpx
     async def timeout(model,payload):
         raise httpx.ReadTimeout('synthetic timeout')
-    monkeypatch.setattr('serein.api.chat.complete',timeout)
+    monkeypatch.setattr('lattice.api.chat.complete',timeout)
     assert client.post('/v1/models/writer',json=task).status_code==504
     async def total_timeout(model,payload):
         raise TimeoutError('synthetic total deadline')
-    monkeypatch.setattr('serein.api.chat.complete',total_timeout)
+    monkeypatch.setattr('lattice.api.chat.complete',total_timeout)
     assert client.post('/v1/models/writer',json=task).status_code==504
     cancelled=[]
     original_wait_for=asyncio.wait_for
@@ -161,8 +195,8 @@ def test_narrative_api_writer_uses_text_only(settings, monkeypatch):
     async def hung(model,payload):
         try:await asyncio.Event().wait()
         finally:cancelled.append(True)
-    monkeypatch.setattr('serein.api.chat.asyncio.wait_for',bounded_wait_for)
-    monkeypatch.setattr('serein.api.chat.complete',hung)
+    monkeypatch.setattr('lattice.api.chat.asyncio.wait_for',bounded_wait_for)
+    monkeypatch.setattr('lattice.api.chat.complete',hung)
     assert client.post('/v1/models/writer',json=task).status_code==504
     assert cancelled==[True]
 
@@ -194,7 +228,7 @@ def test_background_task_claim_progress_failure_resume_and_single_execution(sett
 
 
 def test_actual_worker_continues_import_without_browser_and_restores_pipeline(settings):
-    from serein.imports import stage,list_imports
+    from lattice.imports import stage,list_imports
     from test_file_imports import messages
     upload=stage(settings.database,json.dumps(messages(52)),'synthetic.json','auto',False)
     client=TestClient(create_app(settings,token='synthetic',live=True),headers={'Authorization':'Bearer synthetic'})

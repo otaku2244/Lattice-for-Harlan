@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-import {callSereinBackend} from '../server/sereinBackend.mjs';
+import {callLatticeBackend} from '../server/latticeBackend.mjs';
 import {buildNarrativeTaskPrompt,normalizeNarrativeWriterResult,runNarrativeCodexTask} from '../server/narrativeCodexRunner.mjs';
 import {buildSceneEvidenceRefs} from '../server/sceneEvidenceBridge.mjs';
 import {resolveGatewayObservationOutcome,gatewayRequestLabel,resolveBridgeObservationOutcome} from '../src/recallObservationOutcome.js';
@@ -10,9 +10,9 @@ import {loadWindowShadows,windowShadowViews} from '../src/storage/windowShadowSt
 import {readLiveWindowShadows} from '../vite.config.mjs';
 
 test('imported and revised shadow sections reach portraits without syncing instance introductions',async(t)=>{
-  const previous={url:process.env.SEREIN_MEMORY_URL,token:process.env.SEREIN_MEMORY_TOKEN};
-  process.env.SEREIN_MEMORY_URL='http://synthetic.invalid';
-  process.env.SEREIN_MEMORY_TOKEN='synthetic';
+  const previous={url:process.env.LATTICE_MEMORY_URL,token:process.env.LATTICE_MEMORY_TOKEN};
+  process.env.LATTICE_MEMORY_URL='http://synthetic.invalid';
+  process.env.LATTICE_MEMORY_TOKEN='synthetic';
   try {
     const sections={user_view:'最新的你\n保留换行。',self_view:'最新的自己',recent_events:'这部分只在窗影全文展示。'};
     t.mock.method(globalThis,'fetch',async(url,options)=>{
@@ -22,7 +22,7 @@ test('imported and revised shadow sections reach portraits without syncing insta
     });
     const projection=await readLiveWindowShadows();
     t.mock.method(globalThis,'fetch',async(url,options)=>{
-      assert.equal(url,'/__serein/live/window-shadows');
+      assert.equal(url,'/__lattice/live/window-shadows');
       assert.deepEqual(JSON.parse(options.body),{});
       return {ok:true,json:async()=>projection};
     });
@@ -30,7 +30,7 @@ test('imported and revised shadow sections reach portraits without syncing insta
     assert.deepEqual(windowShadowViews({...projection.shadows[0],sections:{user_view:'修订后的你',self_view:''}}),{user:'修订后的你',assistant:''});
     assert.deepEqual(windowShadowViews(null),{user:'',assistant:''});
   } finally {
-    for(const [key,value] of [['SEREIN_MEMORY_URL',previous.url],['SEREIN_MEMORY_TOKEN',previous.token]]) {
+    for(const [key,value] of [['LATTICE_MEMORY_URL',previous.url],['LATTICE_MEMORY_TOKEN',previous.token]]) {
       if(value===undefined)delete process.env[key];else process.env[key]=value;
     }
   }
@@ -72,12 +72,12 @@ test('observation distinguishes disabled recall, preparation, failure and succes
 
 test('missing configuration never calls a remote fallback',async()=>{
   let called=false;
-  await assert.rejects(callSereinBackend('/health',{}, {env:{},fetchImpl:()=>{called=true;}}),/not_configured/);
+  await assert.rejects(callLatticeBackend('/health',{}, {env:{},fetchImpl:()=>{called=true;}}),/not_configured/);
   assert.equal(called,false);
 });
 test('backend credentials stay in server request headers',async()=>{
-  const result=await callSereinBackend('/v1/memories/test',{}, {
-    env:{SEREIN_MEMORY_URL:'http://localhost:9000',SEREIN_MEMORY_TOKEN:'synthetic'},
+  const result=await callLatticeBackend('/v1/memories/test',{}, {
+    env:{LATTICE_MEMORY_URL:'http://localhost:9000',LATTICE_MEMORY_TOKEN:'synthetic'},
     fetchImpl:async(url,options)=>{
       assert.equal(url,'http://localhost:9000/v1/memories/test');
       assert.equal(options.headers.Authorization,'Bearer synthetic');
@@ -105,18 +105,18 @@ test('writer preserves long source-bound narrative bodies',()=>{
   assert.equal(normalizeNarrativeWriterResult({evidence_sufficient:true,body,issues:[],self_review}).body,body);
 });
 test('writer disabled means no runner starts',async()=>{
-  delete process.env.SEREIN_WRITER_ENABLED;
+  delete process.env.LATTICE_WRITER_ENABLED;
   await assert.rejects(runNarrativeCodexTask({}, {backend:async()=>({ok:true,payload:{identity:{user_name:"User",ai_name:"AI"},upstream:{writer_enabled:false}}})}),/disabled/);
 });
 test('main-model authoring blocks both API and external automatic Writer',async()=>{
-  const previous=process.env.SEREIN_WRITER_ENABLED;
-  process.env.SEREIN_WRITER_ENABLED='1';
+  const previous=process.env.LATTICE_WRITER_ENABLED;
+  process.env.LATTICE_WRITER_ENABLED='1';
   try {
     for(const writer_enabled of [false,true])await assert.rejects(runNarrativeCodexTask({}, {
       backend:async()=>({ok:true,payload:{identity:{},features:{narrative_tools:true},upstream:{writer_enabled}}}),
     }),/disabled_main_model_authoring/);
   } finally {
-    if(previous===undefined)delete process.env.SEREIN_WRITER_ENABLED;else process.env.SEREIN_WRITER_ENABLED=previous;
+    if(previous===undefined)delete process.env.LATTICE_WRITER_ENABLED;else process.env.LATTICE_WRITER_ENABLED=previous;
   }
 });
 
@@ -162,12 +162,12 @@ test('configured Writer only sends bound text, without loading referenced images
     path==='/v1/settings' ? backend(path) : {ok:false,status:504,payload:{detail:'Writer timed out'}}}),
     /narrative_writer_timeout/);
 
-  const previous = Object.fromEntries(['SEREIN_WRITER_ENABLED','SEREIN_WRITER_MODEL','SEREIN_WRITER_COMMAND']
+  const previous = Object.fromEntries(['LATTICE_WRITER_ENABLED','LATTICE_WRITER_MODEL','LATTICE_WRITER_COMMAND']
     .map(key => [key,process.env[key]]));
   try {
-    process.env.SEREIN_WRITER_ENABLED='1';
-    process.env.SEREIN_WRITER_MODEL='synthetic';
-    process.env.SEREIN_WRITER_COMMAND=JSON.stringify([process.execPath,'-e','setInterval(() => {}, 1000)']);
+    process.env.LATTICE_WRITER_ENABLED='1';
+    process.env.LATTICE_WRITER_MODEL='synthetic';
+    process.env.LATTICE_WRITER_COMMAND=JSON.stringify([process.execPath,'-e','setInterval(() => {}, 1000)']);
     t.mock.timers.enable({apis:['setTimeout']});
     const run=runNarrativeCodexTask({...args,materials:{}},{backend:async()=>({ok:true,payload:{
       identity:{},upstream:{writer_enabled:false}}})});

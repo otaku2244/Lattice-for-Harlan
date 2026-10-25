@@ -6,14 +6,14 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.application import Application
-from serein.api.http import create_app
-from serein.api.mcp import create_server
-from serein.bootstrap import initialize
-from serein.compat.originals import Originals, original_timestamp
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
+from lattice.application import Application
+from lattice.api.http import create_app
+from lattice.api.mcp import create_server
+from lattice.bootstrap import initialize
+from lattice.compat.originals import Originals, original_timestamp
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
 
 
 @pytest.fixture

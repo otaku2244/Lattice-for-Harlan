@@ -1,5 +1,5 @@
 export function appearanceBridge(server, backend, readJsonBody) {
-  server.middlewares.use('/__serein/appearance/images', async (request, response) => {
+  server.middlewares.use('/__lattice/appearance/images', async (request, response) => {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
     const path = (request.url || '/').split('?')[0];

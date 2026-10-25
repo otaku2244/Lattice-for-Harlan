@@ -50,8 +50,8 @@ export function App() {
   const [, refreshIdentity] = useState(0);
   useEffect(() => {
     const update = () => refreshIdentity(value => value + 1);
-    window.addEventListener("serein:preference-change", update);
-    return () => window.removeEventListener("serein:preference-change", update);
+    window.addEventListener("lattice:preference-change", update);
+    return () => window.removeEventListener("lattice:preference-change", update);
   }, []);
   const [notice, setNotice] = useState("");
   const [awakeEntry, setAwakeEntry] = useState(() => window.location.hash === "#awake" ? "content" : "cover");
@@ -98,7 +98,7 @@ export function App() {
   };
 
   const navigateTo = (label, scroll = 0, entry = "content") => {
-    if (activeArea === "沉淀" && label !== activeArea && !window.dispatchEvent(new Event("serein:before-navigation", {cancelable:true}))) {
+    if (activeArea === "沉淀" && label !== activeArea && !window.dispatchEvent(new Event("lattice:before-navigation", {cancelable:true}))) {
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#mailbox`);
       return;
     }
@@ -153,12 +153,12 @@ export function App() {
       />
 
       {activeArea === "沉淀" && <section className="mailbox-page" aria-label="沉淀">
-        <EventMailboxPage onOpenMemory={() => navigateTo("记忆")} onOpenSettings={() => {window.dispatchEvent(new CustomEvent("serein:open-settings-tab", {detail:"features"}));navigateTo("设置");}} />
+        <EventMailboxPage onOpenMemory={() => navigateTo("记忆")} onOpenSettings={() => {window.dispatchEvent(new CustomEvent("lattice:open-settings-tab", {detail:"features"}));navigateTo("设置");}} />
         <Sidebar activeArea={activeArea} onNavigate={navigateTo} onOpenSettings={() => setSettingsOpen(true)} />
       </section>}
 
       {activeArea === "换窗" && <section className="resume-page" aria-label="换窗">
-        <ResumePage onOpenSettings={() => { window.dispatchEvent(new CustomEvent("serein:open-settings-tab", {detail:"features"})); navigateTo("设置"); }}/>
+        <ResumePage onOpenSettings={() => { window.dispatchEvent(new CustomEvent("lattice:open-settings-tab", {detail:"features"})); navigateTo("设置"); }}/>
         <Sidebar activeArea={activeArea} onNavigate={navigateTo} onOpenSettings={() => setSettingsOpen(true)}/>
       </section>}
 
@@ -166,7 +166,7 @@ export function App() {
         <div className="settings-panel settings-page">
           <header className="settings-panel__header"><div><span>SEREIN</span><h2>使用说明</h2></div></header>
           <div className="settings-panel__body"><UsageGuide initialPage={helpPage} onOpenSettingsTab={(tab) => {
-            window.dispatchEvent(new CustomEvent("serein:open-settings-tab", { detail: tab }));
+            window.dispatchEvent(new CustomEvent("lattice:open-settings-tab", { detail: tab }));
             navigateTo("设置");
           }} /></div>
         </div>

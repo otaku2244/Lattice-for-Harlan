@@ -1,12 +1,12 @@
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.entities import rebuild_entities, candidates
-from serein.recall.index import Search, build_index
-from serein.recall.policy import RecallPolicy
-from serein.recall.query import Query
-from serein.recall.service import Recall
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.entities import rebuild_entities, candidates
+from lattice.recall.index import Search, build_index
+from lattice.recall.policy import RecallPolicy
+from lattice.recall.query import Query
+from lattice.recall.service import Recall
 
 
 @pytest.fixture

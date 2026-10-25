@@ -13,7 +13,7 @@ def test_release_includes_runtime_python_modules():
     manifest = set(json.loads((root/'release-files.json').read_text(encoding='utf-8')))
     modules = {
         path.relative_to(root).as_posix()
-        for path in (root/'src'/'serein').rglob('*.py')
+        for path in (root/'src'/'lattice').rglob('*.py')
     }
     assert modules <= manifest, sorted(modules - manifest)
 

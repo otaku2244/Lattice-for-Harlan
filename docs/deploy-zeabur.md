@@ -1,12 +1,12 @@
-# Serein 的 Zeabur 手动部署参考
+# Lattice 的 Zeabur 手动部署参考
 
 更新日期：2026-10-10。
 
-**本文根据当前 Serein 源码和 Zeabur 官方文档整理，尚未在 Zeabur 实际部署验证。** 它提供手动配置参考，不是经过验收的一键模板；平台构建、文件注入、网络、流式响应和重启后的数据保留仍需要部署者检查。常规安装见 [部署指南](deployment-guide.md)。
+**本文根据当前 Lattice 源码和 Zeabur 官方文档整理，尚未在 Zeabur 实际部署验证。** 它提供手动配置参考，不是经过验收的一键模板；平台构建、文件注入、网络、流式响应和重启后的数据保留仍需要部署者检查。常规安装见 [部署指南](deployment-guide.md)。
 
 ## 1. 当前结构
 
-完整实例包含两个服务，均从同一份 Serein 代码、同一版本构建：
+完整实例包含两个服务，均从同一份 Lattice 代码、同一版本构建：
 
 | 服务 | Dockerfile（相对仓库根目录） | 用途 | 本文监听端口 |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ Zeabur 当前[不直接支持 Docker Compose YAML 部署](https://zeabur.com/doc
 
 ```toml
 [storage]
-database = "/data/serein.db"
+database = "/data/lattice.db"
 index = "/data/recall-index.sqlite"
 ```
 
@@ -96,7 +96,7 @@ memory 的环境变量：
 ```text
 ZBPACK_DOCKERFILE_PATH=Dockerfile
 PORT=8080
-SEREIN_HTTP_TOKEN_FILE=/secrets/api-token
+LATTICE_HTTP_TOKEN_FILE=/secrets/api-token
 ```
 
 `ZBPACK_DOCKERFILE_PATH` 的用法见 [Dockerfile 部署说明](https://zeabur.com/docs/en-US/deploy/methods/dockerfile)。本文固定使用 8080，与平台 Git 服务的默认端口对齐；若实际分配端口不同，启动命令和后面的内部 URL 必须同步修改。
@@ -104,12 +104,12 @@ SEREIN_HTTP_TOKEN_FILE=/secrets/api-token
 **覆盖默认启动命令为：**
 
 ```sh
-python -m serein.launch --config /config/config.toml http --live --host 0.0.0.0 --port 8080
+python -m lattice.launch --config /config/config.toml http --live --host 0.0.0.0 --port 8080
 ```
 
-仓库根 Dockerfile 默认命令是 `python -m serein ... --port 8011`，而本地 Compose 另行设置了 `serein.launch` 入口。Zeabur 不执行 Compose，因此这里需要显式使用 `serein.launch`：它读取 token 文件、建立数据目录并初始化数据库。只设置 `PORT` 不会改变 Python 命令里的端口。
+仓库根 Dockerfile 默认命令是 `python -m lattice ... --port 8011`，而本地 Compose 另行设置了 `lattice.launch` 入口。Zeabur 不执行 Compose，因此这里需要显式使用 `lattice.launch`：它读取 token 文件、建立数据目录并初始化数据库。只设置 `PORT` 不会改变 Python 命令里的端口。
 
-为 memory 挂载一个[持久化数据卷](https://zeabur.com/docs/en-US/operations/data/volumes)，路径为 `/data`。数据库、派生索引、图片和其他以数据库目录为根的运行文件都应保留在这个卷中；不要只保存 `serein.db` 一个文件。
+为 memory 挂载一个[持久化数据卷](https://zeabur.com/docs/en-US/operations/data/volumes)，路径为 `/data`。数据库、派生索引、图片和其他以数据库目录为根的运行文件都应保留在这个卷中；不要只保存 `lattice.db` 一个文件。
 
 配置 `/health` 为健康检查路径。memory 只供项目内访问，不需要绑定公网域名。启动后，从它的网络面板复制实际的 **Private hostname**；不要仅凭服务名称猜主机名。Zeabur 的[私有网络说明](https://zeabur.com/docs/en-US/deploy/networking/private-networking)介绍了查找方法。
 
@@ -120,16 +120,16 @@ python -m serein.launch --config /config/config.toml http --live --host 0.0.0.0 
 ```text
 ZBPACK_DOCKERFILE_PATH=deploy/Gateway.Dockerfile
 PORT=8080
-SEREIN_GATEWAY_PORT=8080
-SEREIN_GATEWAY_BIND=0.0.0.0
-SEREIN_MEMORY_URL=http://<memory 的实际 Private hostname>:8080
-SEREIN_MEMORY_TOKEN_FILE=/secrets/api-token
-SEREIN_WEB_AUTH_FILE=/secrets/web-auth.json
-SEREIN_PUBLIC_ORIGIN=https://<gateway 的公网域名>
-SEREIN_ROUTE_DRAFT_FILE=/app/.runtime/semantic-route-draft.json
+LATTICE_GATEWAY_PORT=8080
+LATTICE_GATEWAY_BIND=0.0.0.0
+LATTICE_MEMORY_URL=http://<memory 的实际 Private hostname>:8080
+LATTICE_MEMORY_TOKEN_FILE=/secrets/api-token
+LATTICE_WEB_AUTH_FILE=/secrets/web-auth.json
+LATTICE_PUBLIC_ORIGIN=https://<gateway 的公网域名>
+LATTICE_ROUTE_DRAFT_FILE=/app/.runtime/semantic-route-draft.json
 ```
 
-将尖括号占位内容替换成实际值。`SEREIN_PUBLIC_ORIGIN` 只填写 HTTPS origin，例如 `https://example.zeabur.app`，不加 `/v1`、查询参数或其他路径；它用于远程 MCP OAuth 的公开地址识别。gateway 代码读取的是 `SEREIN_GATEWAY_PORT`，不能只设置平台的 `PORT`。端口规则见 [Zeabur 公网说明](https://zeabur.com/docs/en-US/deploy/networking/public-networking)。
+将尖括号占位内容替换成实际值。`LATTICE_PUBLIC_ORIGIN` 只填写 HTTPS origin，例如 `https://example.zeabur.app`，不加 `/v1`、查询参数或其他路径；它用于远程 MCP OAuth 的公开地址识别。gateway 代码读取的是 `LATTICE_GATEWAY_PORT`，不能只设置平台的 `PORT`。端口规则见 [Zeabur 公网说明](https://zeabur.com/docs/en-US/deploy/networking/public-networking)。
 
 沿用镜像默认启动命令：
 
@@ -147,16 +147,16 @@ node server/gateway.mjs
 | --- | --- |
 | 网页 | `https://<gateway 域名>/`，使用网页用户名和密码 |
 | OpenAI-compatible 聊天客户端 | Base URL 为 `https://<gateway 域名>/v1`，Key 为 `api-token` 内容 |
-| MCP | `https://<gateway 域名>/serein/mcp`；Bearer 客户端使用同一 Key，OAuth 客户端按 [接入说明](interactive-install.md)授权 |
+| MCP | `https://<gateway 域名>/lattice/mcp`；Bearer 客户端使用同一 Key，OAuth 客户端按 [接入说明](interactive-install.md)授权 |
 | Hook | `https://<gateway 域名>/api/hook/recall`，使用同一 Key，见 [Hook 接入](hook-integration.md) |
 
 在网页的“设置 → 模型／配置”添加模型，选择 embedding 与 reranker 并准备索引，再开启所需功能。仅连接 MCP 的客户端需要主动调用记忆工具；自动召回需要聊天经过网关或宿主接入 Hook。
 
-网页设置的叙事卷模型使用现有上游 API 路径。Gateway 镜像不包含 Codex CLI，不应直接开启需要本地 CLI 的 `SEREIN_WRITER_ENABLED`／`SEREIN_WRITER_COMMAND` 路线。
+网页设置的叙事卷模型使用现有上游 API 路径。Gateway 镜像不包含 Codex CLI，不应直接开启需要本地 CLI 的 `LATTICE_WRITER_ENABLED`／`LATTICE_WRITER_COMMAND` 路线。
 
 ## 6. 数据迁移、更新与备份
 
-旧 Ombre 记忆需要走 Serein 的旧库迁移入口，见 [迁移说明](interactive-install.md)。不能把 buckets 解压到 `/data` 就当作完成迁移，也不能直接把旧数据库更名为 `serein.db`。优先使用网页上传完整旧库备份；仅含 buckets 的包缺少暗房、梦境等历史状态。网页上传上限为 64 MiB，较大的备份需另行安排只读来源路径与授权，不套用本地菜单的主机挂载步骤。
+旧 Ombre 记忆需要走 Lattice 的旧库迁移入口，见 [迁移说明](interactive-install.md)。不能把 buckets 解压到 `/data` 就当作完成迁移，也不能直接把旧数据库更名为 `lattice.db`。优先使用网页上传完整旧库备份；仅含 buckets 的包缺少暗房、梦境等历史状态。网页上传上限为 64 MiB，较大的备份需另行安排只读来源路径与授权，不套用本地菜单的主机挂载步骤。
 
 Zeabur 部署由平台管理构建和重启，不使用本机 `se` 菜单管理线上服务。更新前保存完整 `/data`、gateway 草稿卷、配置与凭据；两个服务更新到相同版本。网页下载的数据库备份不包含图片、派生索引、草稿和部署凭据，不能代替整套备份。
 
@@ -181,14 +181,14 @@ SQLite 实例按单个 memory 副本运行，不对同一主库开启多副本�
 ValueError: Set the HTTP bearer credential before starting the service.
 ```
 
-当前代码直接读取的环境变量名是 **`SEREIN_HTTP_TOKEN`**，值为自己生成的随机 Gateway Key，填写纯 token，不加 `Bearer ` 前缀。`SEREIN_HTTP_BEARER`、`SEREIN_BEARER_TOKEN` 和 `SEREIN_API_KEY` 都不是这个配置项，也不是模型厂商的 API Key。
+当前代码直接读取的环境变量名是 **`LATTICE_HTTP_TOKEN`**，值为自己生成的随机 Gateway Key，填写纯 token，不加 `Bearer ` 前缀。`LATTICE_HTTP_BEARER`、`LATTICE_BEARER_TOKEN` 和 `LATTICE_API_KEY` 都不是这个配置项，也不是模型厂商的 API Key。
 
-根目录 Dockerfile 默认使用 `python -m serein`，不会自行读取 `SEREIN_HTTP_TOKEN_FILE`。使用本文推荐的文件配置时，需要改成第 3 节的 `python -m serein.launch ...` 启动命令；这个入口才会将文件内容读入 `SEREIN_HTTP_TOKEN`。也可直接设置 `SEREIN_HTTP_TOKEN`，但仍建议使用 `serein.launch` 完成初始化，并保持 gateway 的 token 文件内容相同。
+根目录 Dockerfile 默认使用 `python -m lattice`，不会自行读取 `LATTICE_HTTP_TOKEN_FILE`。使用本文推荐的文件配置时，需要改成第 3 节的 `python -m lattice.launch ...` 启动命令；这个入口才会将文件内容读入 `LATTICE_HTTP_TOKEN`。也可直接设置 `LATTICE_HTTP_TOKEN`，但仍建议使用 `lattice.launch` 完成初始化，并保持 gateway 的 token 文件内容相同。
 
 ### 服务运行但网页 502
 
 仅用根目录 Dockerfile 会启动 memory 后端，不会提供完整网页。先确认是否另建了 gateway，以及公网域名是否绑定到 gateway。再核对平台转发端口与进程实际监听端口：根 Dockerfile 默认监听 8011，本文显式改为 8080；仅修改 `PORT` 环境变量不会改变该默认 Python 命令。
 
-还需核对 gateway 的 `SEREIN_MEMORY_URL`、实际 Private hostname 和 memory 日志。502 本身不足以确定原因；排查时提供两个服务的 Dockerfile 路径、启动命令、端口、数据卷挂载路径及最近启动日志，环境变量仅提供名称，隐藏 token、密码、账号哈希和模型密钥。
+还需核对 gateway 的 `LATTICE_MEMORY_URL`、实际 Private hostname 和 memory 日志。502 本身不足以确定原因；排查时提供两个服务的 Dockerfile 路径、启动命令、端口、数据卷挂载路径及最近启动日志，环境变量仅提供名称，隐藏 token、密码、账号哈希和模型密钥。
 
 `/ready` 返回 503 时，先检查 memory 启动、内部主机名、端口和凭据文件；网页显示鉴权尚未配置时，检查 `/secrets/web-auth.json` 的路径和格式。构建失败先核对 Dockerfile 选择和构建根目录。更多项目侧排错见 [排错指南](troubleshooting.md)。

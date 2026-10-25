@@ -76,9 +76,9 @@ test("narrative preview polls its job outside the original request", async (t) =
   });
   const result = await previewNarrativeRoll({ id: "narrative_1", revision: 1, documentHash: "hash" }, "rewrite", {});
   assert.equal(result.body, "预览正文");
-  assert.equal(requests[0][0], "/__serein/narrative-preview");
+  assert.equal(requests[0][0], "/__lattice/narrative-preview");
   assert.equal(requests[0][1].method, "POST");
-  assert.equal(requests[1][0], "/__serein/narrative-preview?jobId=job-1");
+  assert.equal(requests[1][0], "/__lattice/narrative-preview?jobId=job-1");
   assert.equal(requests[1][1].cache, "no-store");
 });
 
@@ -114,9 +114,9 @@ test("polling reports missing jobs and upstream timeouts without saving", async 
 });
 
 test("background preview route retains save seals and performs no publication", async (t) => {
-  const previous = { url: process.env.SEREIN_MEMORY_URL, token: process.env.SEREIN_MEMORY_TOKEN };
-  process.env.SEREIN_MEMORY_URL = "http://synthetic.invalid";
-  process.env.SEREIN_MEMORY_TOKEN = "synthetic";
+  const previous = { url: process.env.LATTICE_MEMORY_URL, token: process.env.LATTICE_MEMORY_TOKEN };
+  process.env.LATTICE_MEMORY_URL = "http://synthetic.invalid";
+  process.env.LATTICE_MEMORY_TOKEN = "synthetic";
   try {
     const handlers = new Map(), paths = [];
     let releaseInput;
@@ -152,10 +152,10 @@ test("background preview route retains save seals and performs no publication", 
         },
       }}));
     });
-    config.plugins.flat().find(plugin => plugin.name === "serein-memory-bridge").configureServer({
+    config.plugins.flat().find(plugin => plugin.name === "lattice-memory-bridge").configureServer({
       middlewares: { use: (path, handler) => { handlers.set(path, handler); } },
     });
-    const handler = handlers.get("/__serein/narrative-preview");
+    const handler = handlers.get("/__lattice/narrative-preview");
     const call = async (method, url, body) => {
       const request = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
       request.method = method; request.url = url;
@@ -189,7 +189,7 @@ test("background preview route retains save seals and performs no publication", 
     assert.deepEqual(paths, ["/api/narrative-rolls/preview-input", "/v1/settings", "/v1/models/writer"]);
     assert.equal((await call("GET", "/?jobId=missing")).statusCode, 404);
   } finally {
-    for (const [key, value] of [["SEREIN_MEMORY_URL", previous.url], ["SEREIN_MEMORY_TOKEN", previous.token]]) {
+    for (const [key, value] of [["LATTICE_MEMORY_URL", previous.url], ["LATTICE_MEMORY_TOKEN", previous.token]]) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }

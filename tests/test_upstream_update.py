@@ -42,7 +42,7 @@ def commit_source(module, remote):
 
 
 @pytest.mark.parametrize('bad', ['../outside', '/absolute', 'C:/escape', 'scripts\\escape',
-    'deploy/.env', 'deploy/.env.', 'deploy/runtime/serein.db', '.git/config',
+    'deploy/.env', 'deploy/.env.', 'deploy/runtime/lattice.db', '.git/config',
     'deploy/config.toml', 'scripts/CON', 'scripts/x/../../escape', 'scripts/nul.txt'])
 def test_rejects_private_and_platform_escape_paths(bad):
     with pytest.raises(ValueError):
@@ -94,7 +94,7 @@ def installation(root):
     files['release-files.json'] = json.dumps(sorted(files)).encode()
     for name, data in files.items():
         (root / name).write_bytes(data)
-    for name in ('deploy/config.toml', 'deploy/.env', 'deploy/runtime/serein.db',
+    for name in ('deploy/config.toml', 'deploy/.env', 'deploy/runtime/lattice.db',
                  'deploy/secrets/api-token', 'deploy/installation.json', 'my-notes.txt'):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,7 +114,7 @@ def test_apply_preserves_state_and_removes_only_obsolete_manifest_files(monkeypa
     module.apply_files(root, staged, names, obsolete, backup)
     assert (root / 'README.md').read_bytes() == b'new source'
     assert not (root / 'obsolete.py').exists()
-    assert (root / 'deploy/runtime/serein.db').read_bytes() == b'keep me'
+    assert (root / 'deploy/runtime/lattice.db').read_bytes() == b'keep me'
     assert (root / 'deploy/config.toml').read_bytes() == b'keep me'
     assert (root / 'deploy/.env').read_bytes() == b'keep me'
     assert (root / 'deploy/secrets/api-token').read_bytes() == b'keep me'
@@ -200,7 +200,7 @@ def test_complete_update_order_and_failure_boundaries(monkeypatch, tmp_path, fai
         assert calls == ['stop', 'backup', 'build', 'start', 'health']
         assert (tmp_path / 'README.md').read_bytes() == b'next commit source'
         assert json.loads((tmp_path / 'release-version.json').read_text())['version'] == '0.1.0-rc65'
-    assert (tmp_path / 'deploy/runtime/serein.db').read_bytes() == b'keep me'
+    assert (tmp_path / 'deploy/runtime/lattice.db').read_bytes() == b'keep me'
 
 
 def test_local_file_collision_stops_before_overwrite(tmp_path):
@@ -225,14 +225,14 @@ def test_completed_old_release_does_not_block_main_update(monkeypatch, tmp_path)
 
 def test_real_runtime_backup_while_installer_lock_is_held(tmp_path):
     import tarfile
-    from serein.file_lock import exclusive_lock
+    from lattice.file_lock import exclusive_lock
     module = updater()
     deploy = tmp_path / 'deploy'; (deploy / 'runtime').mkdir(parents=True)
-    (deploy / 'runtime/serein.db').write_bytes(b'synthetic-db')
+    (deploy / 'runtime/lattice.db').write_bytes(b'synthetic-db')
     with exclusive_lock(deploy / 'runtime/installer.lock'):
         backup = module.backup_runtime(Path(__file__).parents[1], deploy)
     with tarfile.open(backup) as archive:
-        assert archive.extractfile('runtime/serein.db').read() == b'synthetic-db'
+        assert archive.extractfile('runtime/lattice.db').read() == b'synthetic-db'
         assert 'runtime/installer.lock' not in archive.getnames()
 
 
@@ -285,7 +285,7 @@ def test_git_only_files_are_not_copied_into_install(tmp_path):
     module.apply_files(root, staged, names, obsolete, backup)
     assert not (root / '.git').exists()
     assert not (root / 'development-only.txt').exists()
-    assert (root / 'deploy/runtime/serein.db').read_bytes() == b'keep me'
+    assert (root / 'deploy/runtime/lattice.db').read_bytes() == b'keep me'
 
 
 def test_power_loss_during_replacement_can_resume_without_accepting_other_edits(monkeypatch, tmp_path):
@@ -306,7 +306,7 @@ def test_power_loss_during_replacement_can_resume_without_accepting_other_edits(
 
 
 def test_bootstrap_uses_existing_instance_and_holds_its_installer_lock(monkeypatch, tmp_path):
-    from serein.file_lock import exclusive_lock
+    from lattice.file_lock import exclusive_lock
     module = updater()
     manager = types.SimpleNamespace(ROOT=tmp_path)
     monkeypatch.setattr(module, 'load_manager', lambda root: manager)
@@ -323,7 +323,7 @@ def test_bootstrap_uses_existing_instance_and_holds_its_installer_lock(monkeypat
 
 
 def test_bootstrap_does_not_update_if_another_installer_is_running(monkeypatch, tmp_path):
-    from serein.file_lock import exclusive_lock
+    from lattice.file_lock import exclusive_lock
     module = updater()
     monkeypatch.setattr(module, 'load_manager', lambda root: types.SimpleNamespace(ROOT=root))
     monkeypatch.setattr(module, 'load_source', lambda path: types.SimpleNamespace(exclusive_lock=exclusive_lock))

@@ -3,16 +3,16 @@ from contextlib import asynccontextmanager
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.config import Settings
-from serein.core import Store
-from serein.core.search import build_index
-from serein.deployment import save_settings
+from lattice.api.http import create_app
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.search import build_index
+from lattice.deployment import save_settings
 
 
 @pytest.mark.parametrize('writable', [False, True])
 def test_event_scene_switch_persists_and_refreshes_http_mcp(tmp_path, writable):
-    from serein.application import Application
+    from lattice.application import Application
     settings = Settings(tmp_path/'promotion.db', writable=True)
     with Store(settings.database):
         pass
@@ -26,12 +26,12 @@ def test_event_scene_switch_persists_and_refreshes_http_mcp(tmp_path, writable):
     headers = {'Authorization':'Bearer test', 'Accept':'application/json, text/event-stream'}
     with TestClient(create_app(settings, token='test', live=writable), headers=headers) as client:
         def rpc(method, params=None):
-            result = client.post('/serein/mcp', json={'jsonrpc':'2.0', 'id':1, 'method':method, 'params':params or {}})
+            result = client.post('/lattice/mcp', json={'jsonrpc':'2.0', 'id':1, 'method':method, 'params':params or {}})
             assert result.status_code == 200, result.text
             return result.json()['result']
         def names():return {t['name'] for t in rpc('tools/list')['tools']}
         def call():return rpc('tools/call', {'name':'promote_event_to_scene', 'arguments':request})
-        from serein.deployment import read_settings
+        from lattice.deployment import read_settings
         assert read_settings(settings.database)['features']['event_to_scene'] is False
         if writable:
             assert client.get('/v1/settings').json()['features']['event_to_scene'] is False
@@ -49,7 +49,7 @@ def test_event_scene_switch_persists_and_refreshes_http_mcp(tmp_path, writable):
         if not writable:
             assert call()['isError']
             return
-        from serein.deployment import read_settings
+        from lattice.deployment import read_settings
         assert read_settings(settings.database)['features']['event_to_scene'] is True
         promoted = call()
         assert not promoted.get('isError')
@@ -74,7 +74,7 @@ def test_retired_index_sync_setting_does_not_restore_http_or_mcp_tool(tmp_path):
     headers = {'Authorization':'Bearer test', 'Accept':'application/json, text/event-stream'}
     with TestClient(create_app(settings, token='test', live=True), headers=headers) as client:
         def rpc(method, params=None):
-            response = client.post('/serein/mcp', json={'jsonrpc':'2.0', 'id':1, 'method':method,
+            response = client.post('/lattice/mcp', json={'jsonrpc':'2.0', 'id':1, 'method':method,
                                                         'params':params or {}})
             assert response.status_code == 200, response.text
             return response.json()['result']
@@ -91,7 +91,7 @@ def test_retired_index_sync_setting_does_not_restore_http_or_mcp_tool(tmp_path):
 
 
 @pytest.mark.parametrize('writable', [False, True])
-@pytest.mark.parametrize('entry_path', ['/serein/mcp', '/mcp'])
+@pytest.mark.parametrize('entry_path', ['/lattice/mcp', '/mcp'])
 def test_http_mcp_auth_tools_and_single_lifecycle(tmp_path, monkeypatch, writable, entry_path):
     settings = Settings(tmp_path/'memory.db', tmp_path/'index.db', writable=writable)
     with Store(settings.database) as store:
@@ -105,23 +105,23 @@ def test_http_mcp_auth_tools_and_single_lifecycle(tmp_path, monkeypatch, writabl
         yield
         calls.append('stop')
 
-    monkeypatch.setattr('serein.lifecycle.lifespan', lifecycle)
+    monkeypatch.setattr('lattice.lifecycle.lifespan', lifecycle)
     headers = {'Authorization':'Bearer synthetic-key', 'Accept':'application/json, text/event-stream'}
     initialize = {'jsonrpc':'2.0', 'id':1, 'method':'initialize',
                   'params':{'protocolVersion':'2025-03-26', 'capabilities':{},
                             'clientInfo':{'name':'test', 'version':'1'}}}
     with TestClient(create_app(settings, token='synthetic-key', live=writable)) as client:
-        for path in ('/serein/mcp', '/serein/mcp/', '/mcp', '/mcp/'):
+        for path in ('/lattice/mcp', '/lattice/mcp/', '/mcp', '/mcp/'):
             for auth in ('', 'Bearer wrong', 'Basic synthetic-key'):
                 denied = client.post(path, headers={**headers, 'Authorization':auth}, json=initialize)
                 assert denied.status_code == 401
                 challenge = denied.headers['www-authenticate']
                 assert challenge.startswith('Bearer resource_metadata="http://testserver/.well-known/oauth-protected-resource/')
-                assert 'scope="serein:mcp"' in challenge
+                assert 'scope="lattice:mcp"' in challenge
             result = client.post(path, headers=headers, json=initialize)
             assert result.status_code == 200, result.text
             assert not result.history
-            assert result.json()['result']['serverInfo']['name'] == 'Serein'
+            assert result.json()['result']['serverInfo']['name'] == 'Lattice'
         assert client.post(entry_path, headers={**headers, 'Origin':'https://foreign.invalid'}, json=initialize).status_code == 403
         assert client.post(entry_path, headers={**headers, 'Origin':'http://testserver'}, json=initialize).status_code == 200
         assert client.get(entry_path, headers={'Authorization':'Bearer wrong'}).status_code == 401
@@ -182,7 +182,7 @@ def test_http_mcp_auth_tools_and_single_lifecycle(tmp_path, monkeypatch, writabl
     assert calls == ['start', 'stop']
 
 
-@pytest.mark.parametrize('entry_path', ['/serein/mcp', '/serein/mcp/', '/mcp', '/mcp/'])
+@pytest.mark.parametrize('entry_path', ['/lattice/mcp', '/lattice/mcp/', '/mcp', '/mcp/'])
 def test_official_streamable_http_client(tmp_path, entry_path):
     import asyncio
     import httpx
@@ -201,7 +201,7 @@ def test_official_streamable_http_client(tmp_path, entry_path):
                                          headers={'Authorization':'Bearer sdk-test-key'}) as http:
                 async with streamable_http_client('http://testserver'+entry_path, http_client=http) as (read, write, _):
                     async with ClientSession(read, write) as session:
-                        assert (await session.initialize()).serverInfo.name == 'Serein'
+                        assert (await session.initialize()).serverInfo.name == 'Lattice'
                         assert 'read_memory' in {t.name for t in (await session.list_tools()).tools}
                         result = await session.call_tool('read_memory', {'identifier':'scene_sdk'})
                         assert not result.isError
@@ -213,9 +213,9 @@ def test_official_streamable_http_client(tmp_path, entry_path):
 def test_window_shadow_returns_each_section_once_over_http_and_mcp(tmp_path):
     import asyncio
     import json
-    from serein.api.mcp import create_server
-    from serein.application import Application
-    from serein.compat.window_shadows import WindowShadows
+    from lattice.api.mcp import create_server
+    from lattice.application import Application
+    from lattice.compat.window_shadows import WindowShadows
 
     settings = Settings(tmp_path/'memory.db', tmp_path/'index.db', writable=True)
     with Store(settings.database):
@@ -248,9 +248,9 @@ def test_window_shadow_returns_each_section_once_over_http_and_mcp(tmp_path):
 
 def test_shadow_writer_survives_retired_reader_and_feature_refresh(tmp_path):
     import asyncio
-    from serein.api.mcp import create_server
-    from serein.application import Application
-    from serein.compat.window_shadows import WindowShadows
+    from lattice.api.mcp import create_server
+    from lattice.application import Application
+    from lattice.compat.window_shadows import WindowShadows
     settings = Settings(tmp_path/'shadow.db', writable=True,
                         mcp_tools=['resume', 'window_shadow_read', 'window_shadow_write'])
     with Store(settings.database):

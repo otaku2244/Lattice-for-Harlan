@@ -11,8 +11,8 @@ export async function backupDownload(request, response) {
   const disconnect = () => { if (!response.writableEnded) controller.abort(); };
   response.on('close', disconnect);
   try {
-    const base = process.env.SEREIN_MEMORY_URL;
-    const token = process.env.SEREIN_MEMORY_TOKEN;
+    const base = process.env.LATTICE_MEMORY_URL;
+    const token = process.env.LATTICE_MEMORY_TOKEN;
     if (!base || !token) throw new Error('backend_not_configured');
     const result = await fetch(base.replace(/\/$/, '') + '/v1/export/backup', {
       headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
@@ -20,7 +20,7 @@ export async function backupDownload(request, response) {
     response.statusCode = result.status;
     response.setHeader('Content-Type', result.ok ? 'application/octet-stream' : 'application/json; charset=utf-8');
     if (result.ok) {
-      response.setHeader('Content-Disposition', 'attachment; filename="serein-backup.db"');
+      response.setHeader('Content-Disposition', 'attachment; filename="lattice-backup.db"');
       const length = result.headers.get('Content-Length');
       if (length) response.setHeader('Content-Length', length);
     }

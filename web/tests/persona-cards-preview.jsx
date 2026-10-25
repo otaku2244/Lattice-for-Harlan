@@ -16,7 +16,7 @@ const examples = [
 let events = JSON.parse(sessionStorage.getItem('persona-cards-preview-events') || 'null') || examples;
 let featureValues = { persona: false, memos: false, anti_retreat: false, window_shadows: false, relations_auto_accept: false };
 window.fetch = async (url, options = {}) => {
-  if (String(url).includes('/__serein/settings')) {
+  if (String(url).includes('/__lattice/settings')) {
     if (options.method === 'PATCH') featureValues = { ...featureValues, ...JSON.parse(options.body).features };
     return new Response(JSON.stringify({ identity: { user_name: 'User', ai_name: 'AI' }, features: featureValues }), { headers: { 'Content-Type': 'application/json' } });
   }

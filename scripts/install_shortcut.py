@@ -5,24 +5,24 @@ import shlex
 import shutil
 import sys
 
-MARKER='Serein directory launcher v1'
+MARKER='Lattice directory launcher v1'
 POSIX=r'''#!/bin/sh
-# Serein directory launcher v1
+# Lattice directory launcher v1
 if [ ! -f ./release-files.json ] || [ ! -f ./scripts/manage.py ] || [ ! -f ./scripts/one_click.sh ]; then
-    printf '%s\n' 'Please enter a Serein directory before running se.' >&2
+    printf '%s\n' 'Please enter a Lattice directory before running se.' >&2
     exit 2
 fi
 exec bash ./scripts/one_click.sh "$@"
 '''
 WINDOWS='''@echo off
-rem Serein directory launcher v1
+rem Lattice directory launcher v1
 if not exist "release-files.json" goto wrong_directory
 if not exist "scripts\\manage.py" goto wrong_directory
 if not exist "scripts\\one_click.ps1" goto wrong_directory
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\\scripts\\one_click.ps1" %*
 exit /b %ERRORLEVEL%
 :wrong_directory
-echo Please enter a Serein directory before running se. 1>&2
+echo Please enter a Lattice directory before running se. 1>&2
 exit /b 2
 '''
 
@@ -37,7 +37,7 @@ def write_launcher(directory,windows=False):
     content=(WINDOWS.replace('\n','\r\n') if windows else POSIX).encode()
     if target.exists() and target.read_bytes()==content:return target,False
     directory.mkdir(parents=True,exist_ok=True)
-    temporary=target.with_name(target.name+'.serein-tmp')
+    temporary=target.with_name(target.name+'.lattice-tmp')
     temporary.write_bytes(content);temporary.chmod(0o755);temporary.replace(target)
     return target,True
 
@@ -66,7 +66,7 @@ def shell_path(directory,home):
     for name in ('.profile','.bashrc','.zshrc'):
         path=home/name;text=path.read_text() if path.exists() else ''
         if line not in text.splitlines():
-            with path.open('a') as file:file.write('\n# Serein se command\n'+line+'\n')
+            with path.open('a') as file:file.write('\n# Lattice se command\n'+line+'\n')
     return True
 
 
@@ -74,7 +74,7 @@ def install():
     if os.name=='nt':
         base=os.environ.get('LOCALAPPDATA')
         if not base:raise ValueError('未找到 LOCALAPPDATA，未注册快捷命令。')
-        directory=Path(base)/'Serein'/'bin'
+        directory=Path(base)/'Lattice'/'bin'
         target,changed=write_launcher(directory,windows=True)
         changed_path=windows_path(directory)
     else:
@@ -83,7 +83,7 @@ def install():
         target,changed=write_launcher(directory)
         changed_path=shell_path(directory,Path.home())
     if changed or changed_path:
-        print('已注册 se：进入任一 Serein 发行目录后输入 se 即可打开管理菜单。')
+        print('已注册 se：进入任一 Lattice 发行目录后输入 se 即可打开管理菜单。')
         if changed_path:print('PATH 已保存；若当前终端找不到 se，请重新打开终端。')
     return target
 

@@ -4,10 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from serein.compat.narratives import narrative_transaction, RevisionInbox
-from serein.compat.narrative_cleanup import cleanup_retired_bindings
-from serein.compat.scout import Scout
-from serein.core import Store
+from lattice.compat.narratives import narrative_transaction, RevisionInbox
+from lattice.compat.narrative_cleanup import cleanup_retired_bindings
+from lattice.compat.scout import Scout
+from lattice.core import Store
 from test_live_clients import live
 from test_live_narratives import seed
 

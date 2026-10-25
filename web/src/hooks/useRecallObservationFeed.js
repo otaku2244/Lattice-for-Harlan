@@ -53,7 +53,7 @@ export function useRecallObservationFeed({ source, reviews, ready, rootRef, bott
         setFeeds(next);
       },
       async request(key, { signal, ...options }) {
-        const response = await fetch(key === 'hook' ? '/__serein/assistant-bridge/hook-injections' : '/__serein/gateway/injections', {
+        const response = await fetch(key === 'hook' ? '/__lattice/assistant-bridge/hook-injections' : '/__lattice/gateway/injections', {
           method: 'POST', cache: 'no-store', signal, headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ limit: recallObservationPageLimits[key], ...options }),
         });

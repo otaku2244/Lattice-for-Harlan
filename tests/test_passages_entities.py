@@ -3,14 +3,14 @@ import sqlite3
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.core.store import digest
-from serein.recall.index import build_index,Search,refresh_index
-from serein.recall.passages import prepare_passages,fill_passages,slices,full_coverage
-from serein.recall.entities import rebuild_entities,candidates
-from serein.recall.policy import RecallPolicy
-from serein.recall.query import Query
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.store import digest
+from lattice.recall.index import build_index,Search,refresh_index
+from lattice.recall.passages import prepare_passages,fill_passages,slices,full_coverage
+from lattice.recall.entities import rebuild_entities,candidates
+from lattice.recall.policy import RecallPolicy
+from lattice.recall.query import Query
 
 
 @pytest.fixture
@@ -110,13 +110,13 @@ def test_passage_length_boundary(kind,length,expected):
 
 
 def test_changing_threshold_keeps_prepared_layout_until_body_changes(data,monkeypatch):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     settings,client,_=data
     fill_passages(settings,client=client)
     with sqlite3.connect(settings.index) as conn:
         rows=conn.execute("SELECT * FROM passages WHERE document_id='s'").fetchall()
     save_settings(settings.database,{'recall':{'passage_min_chars':10000}})
-    monkeypatch.setattr('serein.recall.passages.slices',lambda *a,**kw:pytest.fail('Unchanged memory was split again'))
+    monkeypatch.setattr('lattice.recall.passages.slices',lambda *a,**kw:pytest.fail('Unchanged memory was split again'))
     report=prepare_passages(settings)
     assert report['owners_reused_local']>0
     with sqlite3.connect(settings.index) as conn:

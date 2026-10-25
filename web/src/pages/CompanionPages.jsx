@@ -5,7 +5,7 @@ import { memoDateParts, changeMemoDate } from "../utils/memoDate.js";
 import "./companion-pages.css";
 
 async function request(path, method = "GET", body, signal) {
-  const response = await fetch(`/__serein/companion/${path}`, {
+  const response = await fetch(`/__lattice/companion/${path}`, {
     method, signal, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
   });
   const result = await response.json();
@@ -16,8 +16,8 @@ async function request(path, method = "GET", body, signal) {
 function FeatureHeader({ title, eyebrow, description, feature, setEnabled }) {
   useEffect(() => {
     const update = event => setEnabled(event.detail[feature]);
-    window.addEventListener("serein:features", update);
-    return () => window.removeEventListener("serein:features", update);
+    window.addEventListener("lattice:features", update);
+    return () => window.removeEventListener("lattice:features", update);
   }, [feature, setEnabled]);
   return <header className="companion-heading">
     <div><span className="companion-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>

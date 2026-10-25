@@ -1,6 +1,6 @@
 # Copy this file to config.toml. Every path is relative to that file.
 [storage]
-database = "./.runtime/serein.db"
+database = "./.runtime/lattice.db"
 index = "./.runtime/recall-index.sqlite"
 [runtime]
 writable = true
@@ -12,15 +12,19 @@ candidate_limit = 50
 direct_pool_limit = 20
 passages_enabled = false
 passage_min_chars = 500
+# Optional index throughput; defaults keep serial requests and normal polling.
+embedding_batch_size = 16
+embedding_concurrency = 1
+index_catch_up = false
 # Required when semantic recall is configured; generated using prepare-routes.
 # routing_file = "./.runtime/query-routes.json"
 # [embedding]
 # endpoint = "https://embedding.example/v1/embeddings"
-# api_key_env = "SEREIN_EMBEDDING_KEY"
+# api_key_env = "LATTICE_EMBEDDING_KEY"
 # [reranker]
 # endpoint = "https://reranker.example/v1/rerank"
 # model = "your-model"
-# api_key_env = "SEREIN_RERANKER_KEY"
+# api_key_env = "LATTICE_RERANKER_KEY"
 [extensions.relations]
 enabled = false
 [extensions.dreams]

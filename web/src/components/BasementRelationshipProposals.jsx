@@ -63,12 +63,12 @@ export function BasementRelationshipProposals() {
     setState({ status: "loading", payload: null, error: "" });
     try {
       const [proposalResponse, edgeResponse] = await Promise.all([
-        fetch("/__serein/memory/scene-edge-proposals", {
+        fetch("/__lattice/memory/scene-edge-proposals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: nextFilter, limit: 50 }),
         }),
-        nextFilter === "error" ? Promise.resolve(null) : fetch("/__serein/memory/scene-edges", {
+        nextFilter === "error" ? Promise.resolve(null) : fetch("/__lattice/memory/scene-edges", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: "{}",
@@ -103,7 +103,7 @@ export function BasementRelationshipProposals() {
   const retryJob = async (job) => {
     setEdgeActionId(job.attempt_id);
     try {
-      const response = await fetch("/__serein/memory/retry-scene-relation", {
+      const response = await fetch("/__lattice/memory/retry-scene-relation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scene_id: job.scene_id, attempt_id: job.attempt_id }),
@@ -129,7 +129,7 @@ export function BasementRelationshipProposals() {
       error: "",
     });
     try {
-      const response = await fetch("/__serein/memory/read-scene", {
+      const response = await fetch("/__lattice/memory/read-scene", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId }),
@@ -161,7 +161,7 @@ export function BasementRelationshipProposals() {
     if (!window.confirm(`${verb}「${proposal.anchor_scene?.name || proposal.source_scene_id} → ${proposal.candidate_scene?.name || proposal.target_scene_id}」？\n\n${consequence}`)) return;
     setReviewingId(proposal.proposal_id);
     try {
-      const response = await fetch("/__serein/memory/review-scene-edge-proposal", {
+      const response = await fetch("/__lattice/memory/review-scene-edge-proposal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proposalId: proposal.proposal_id, decision }),
@@ -184,7 +184,7 @@ export function BasementRelationshipProposals() {
     }
     setEdgeActionId(draft.supersedesEdgeId || "manual-proposal");
     try {
-      const response = await fetch("/__serein/memory/create-scene-edge-proposal", {
+      const response = await fetch("/__lattice/memory/create-scene-edge-proposal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
@@ -208,7 +208,7 @@ export function BasementRelationshipProposals() {
     if (!window.confirm(`取消「${edge.source_title || edge.source} → ${edge.target_title || edge.target}」？\n\n关系历史会保留，也可以在证据仍有效时恢复。`)) return;
     setEdgeActionId(edge.edge_id);
     try {
-      const response = await fetch("/__serein/memory/delete-scene-edge", {
+      const response = await fetch("/__lattice/memory/delete-scene-edge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ edgeId: edge.edge_id, sceneId: edge.source }),
@@ -226,7 +226,7 @@ export function BasementRelationshipProposals() {
   const restoreEdge = async (edge) => {
     setEdgeActionId(edge.edge_id);
     try {
-      const response = await fetch("/__serein/memory/restore-scene-edge", {
+      const response = await fetch("/__lattice/memory/restore-scene-edge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ edgeId: edge.edge_id }),

@@ -5,9 +5,9 @@ import json
 import pytest
 import yaml
 
-from serein.core import Conflict, Store
-from serein.core.store import digest
-from serein.ingest.legacy_scene import import_snapshot
+from lattice.core import Conflict, Store
+from lattice.core.store import digest
+from lattice.ingest.legacy_scene import import_snapshot
 
 
 def artifact(path, raw):
@@ -22,7 +22,7 @@ def snapshot():
     raw = ("---\n" + yaml.safe_dump(meta, allow_unicode=True) + "---\n\n当前 **正文**\r\n").encode()
     evidence = {"id": 3, "scene_id": "scene_old", "source_system": "chat", "session_id": "s",
                 "message_id": "7", "role": "user", "content": "原文", "content_sha256": digest("原文")}
-    return {"format": "serein-scene-snapshot-v1", "origin": "synthetic-test", "captured_at": "2026-01-01",
+    return {"format": "lattice-scene-snapshot-v1", "origin": "synthetic-test", "captured_at": "2026-01-01",
             "scenes": [artifact("archive/scene.md", raw)], "evidence": [evidence],
             "evidence_actions": [{"id": 8, "evidence_id": 3, "action": "unbind", "actor": "user", "created_at": "2026-01-02"}],
             "tombstones": [artifact(".tombstones/deleted.json", json.dumps({"id": "scene_deleted", "deleted_at": "2026-01-01"}).encode())]}

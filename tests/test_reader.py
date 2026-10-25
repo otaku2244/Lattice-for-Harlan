@@ -4,10 +4,10 @@ import sqlite3
 
 import pytest
 
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.core.store import digest, encode
-from serein.ingest.legacy_diary import import_diaries
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.core.store import digest, encode
+from lattice.ingest.legacy_diary import import_diaries
 from test_diary_import import diary_snapshot
 
 

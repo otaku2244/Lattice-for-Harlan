@@ -3,11 +3,11 @@ import sqlite3
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index
-from serein.recall.service import Recall
-from serein.recall.scene import evidence_text
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index
+from lattice.recall.service import Recall
+from lattice.recall.scene import evidence_text
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ def test_latest_and_timeline_use_event_date_not_record_creation(setup):
 
 
 def test_only_confirmed_relationships_expand_from_selected_scene(setup):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(setup.database,{'features':{'association':True}})
     result = Recall(setup).run("窗边那场雨")
     assert result["selected_refs"] == ["scene:scene_a"]
@@ -119,9 +119,9 @@ def test_only_confirmed_relationships_expand_from_selected_scene(setup):
 
 
 def test_disabled_association_keeps_direct_lookup_and_does_not_expand_edges(setup):
-    from serein.core.reader import Reader
-    from serein.recall.scene import related_candidates
-    from serein.recall.query import Query
+    from lattice.core.reader import Reader
+    from lattice.recall.scene import related_candidates
+    from lattice.recall.query import Query
     engine=Recall(setup)
     for mode in ('surface','lookup'):
         result=engine.run('窗边那场雨',mode=mode)
@@ -151,7 +151,7 @@ def test_semantic_admission_requires_reranking_full_original_question(setup, mon
             pass
         def query(self, text):
             return {"query": text, "profile": profile, "embedding": [1, 0]}
-    monkeypatch.setattr("serein.adapters.embedding.EmbeddingClient", FakeEmbedding)
+    monkeypatch.setattr("lattice.adapters.embedding.EmbeddingClient", FakeEmbedding)
     from dataclasses import replace
     configured = replace(setup, embedding={"endpoint": "unused", "api_key_env": "unused"})
     question = "世界之窗那天发生了什么？"
@@ -170,9 +170,9 @@ def test_semantic_admission_requires_reranking_full_original_question(setup, mon
 def test_saved_threshold_and_simulation_override_change_only_final_admission(setup, monkeypatch):
     from dataclasses import replace
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.application import Application
-    from serein.deployment import read_settings, save_settings
+    from lattice.api.http import create_app
+    from lattice.application import Application
+    from lattice.deployment import read_settings, save_settings
     profile={'model':'threshold-fixture','provider_host':'fixture.invalid','query_instruction':'','document_instruction':'','max_chars':6000}
     with sqlite3.connect(setup.index) as conn:
         conn.execute("INSERT INTO settings VALUES ('embedding_profile',?)",(json.dumps(profile),))
@@ -181,8 +181,8 @@ def test_saved_threshold_and_simulation_override_change_only_final_admission(set
     class Embedding:
         def __init__(self,*args,**kwargs):pass
         def query(self,text):return {'query':text,'profile':profile,'embedding':[1,0]}
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient',Embedding)
-    monkeypatch.setattr('serein.adapters.reranker.RerankerClient',lambda **kwargs:lambda text,docs:{doc['ref']:.62 for doc in docs})
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient',Embedding)
+    monkeypatch.setattr('lattice.adapters.reranker.RerankerClient',lambda **kwargs:lambda text,docs:{doc['ref']:.62 for doc in docs})
     settings=replace(setup,writable=True,embedding={'endpoint':'unused'},reranker={'endpoint':'unused'})
     state=read_settings(settings.database)
     domains=state['tagging']['domains']

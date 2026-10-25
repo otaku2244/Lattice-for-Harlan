@@ -5,11 +5,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from serein.api.gateway import routes
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.recall.rendering import render
-from serein.recall.source_refs import message_refs
+from lattice.api.gateway import routes
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.recall.rendering import render
+from lattice.recall.source_refs import message_refs
 
 
 @pytest.mark.parametrize('kind', ['scene', 'event'])

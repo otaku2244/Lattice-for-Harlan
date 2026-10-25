@@ -2,9 +2,9 @@
 
 import pytest
 
-from serein.compat.events import Events
-from serein.compat.germany.fact_events import FactEventSettlementBlockedError
-from serein.core.store import Store
+from lattice.compat.events import Events
+from lattice.compat.germany.fact_events import FactEventSettlementBlockedError
+from lattice.core.store import Store
 
 
 def _ref(number, text):

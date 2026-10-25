@@ -13,7 +13,7 @@ export function storeLocalPreference(key, value) {
   try {
     const serializedValue = String(value);
     window.localStorage.setItem(key, serializedValue);
-    window.dispatchEvent(new CustomEvent("serein:preference-change", {
+    window.dispatchEvent(new CustomEvent("lattice:preference-change", {
       detail: { key, value: serializedValue },
     }));
   } catch {
@@ -23,7 +23,7 @@ export function storeLocalPreference(key, value) {
 
 export function readCompositionItems() {
   try {
-    const saved = window.localStorage.getItem("serein.awake.composition.items");
+    const saved = window.localStorage.getItem("lattice.awake.composition.items");
     if (!saved) return defaultCompositionItems;
     const parsed = JSON.parse(saved);
     return Array.isArray(parsed) && parsed.every((item) => (
@@ -41,7 +41,7 @@ export function readCompositionItems() {
 
 export function storeCompositionItems(items) {
   try {
-    window.localStorage.setItem("serein.awake.composition.items", JSON.stringify(items));
+    window.localStorage.setItem("lattice.awake.composition.items", JSON.stringify(items));
   } catch {
     // A future Settings store can own this key when browser storage is unavailable.
   }

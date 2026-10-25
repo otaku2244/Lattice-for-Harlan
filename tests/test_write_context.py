@@ -5,12 +5,12 @@ import json
 import sqlite3
 from dataclasses import replace
 
-from serein.application import Application
-from serein.api.mcp import create_server
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.recall.index import build_index
+from lattice.application import Application
+from lattice.api.mcp import create_server
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.recall.index import build_index
 
 
 def setup(tmp_path, *, old_count=1):
@@ -88,7 +88,7 @@ def test_hint_failure_cannot_report_a_committed_scene_as_failed(tmp_path, monkey
     save_settings(settings.database, {'features':{'write_context':True}})
     def fail(*_args):
         raise RuntimeError('synthetic lookup failure')
-    monkeypatch.setattr('serein.recall.write_context.find_write_context', fail)
+    monkeypatch.setattr('lattice.recall.write_context.find_write_context', fail)
     services = Application(settings).services
     result = services.write('save-once', 'save', new_scene())
     assert result['status'] == 'saved' and 'related_scene_candidate' not in result
@@ -107,10 +107,10 @@ def test_prepared_vectors_can_find_nonlexical_front_context(tmp_path, monkeypatc
         conn.execute("INSERT INTO vectors VALUES ('scene_old_0','[1.0,0.0]',2)")
     prepared = replace(settings, embedding={'endpoint':'http://127.0.0.1:9/embeddings','api_key':'test'},
                        reranker={'endpoint':'http://127.0.0.1:9/rerank','model':'synthetic','api_key':'test'})
-    monkeypatch.setattr('serein.configured_models.effective_settings', lambda _settings: prepared)
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient.query',
+    monkeypatch.setattr('lattice.configured_models.effective_settings', lambda _settings: prepared)
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient.query',
                         lambda self, text, client=None: {'query':text, 'profile':self.profile, 'embedding':[1.0,0.0]})
-    monkeypatch.setattr('serein.adapters.reranker.RerankerClient.__call__',
+    monkeypatch.setattr('lattice.adapters.reranker.RerankerClient.__call__',
                         lambda self, text, documents, client=None: {documents[0]['ref']:0.91})
     save_settings(settings.database, {'features':{'write_context':True}})
     result = Application(settings).services.write('semantic', 'save', {'kind':'scene',

@@ -3,12 +3,12 @@ import sqlite3
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.germany.memory_recall.observed_entities import _query_intent
-from serein.recall.index import build_index
-from serein.recall.person_references import resolve_person_references
-from serein.recall.service import Recall
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.germany.memory_recall.observed_entities import _query_intent
+from lattice.recall.index import build_index
+from lattice.recall.person_references import resolve_person_references
+from lattice.recall.service import Recall
 
 
 IDENTITY = {'ai_name': 'Orion', 'user_name': 'Mira', 'user_display_name': '米拉'}
@@ -51,7 +51,7 @@ def test_unconfigured_names_do_not_invent_a_person():
 
 @pytest.mark.parametrize('display_name', [None, '', '   ', '用户'])
 def test_user_name_is_used_when_display_name_is_not_configured(display_name):
-    from serein.recall.germany.identity import identity_names
+    from lattice.recall.germany.identity import identity_names
 
     names = identity_names({'identity': {'ai_name': 'Orion', 'user_name': 'Mira',
                                         'user_display_name': display_name}})
@@ -75,7 +75,7 @@ def birthday_recall(tmp_path, monkeypatch):
     with Store(database) as store:
         store.create('assistant_birthday', 'scene', 'Orion的生日', 'Orion的生日是4月8日。')
         store.create('user_birthday', 'scene', '米拉的生日', '米拉的生日是9月17日。')
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(database, {'identity': {'ai_name': 'Orion', 'user_name': '米拉'}})
     build_index(database, index)
     with sqlite3.connect(index) as conn:
@@ -100,8 +100,8 @@ def birthday_recall(tmp_path, monkeypatch):
         target = 'assistant_birthday' if any(term in query for term in ('Orion的生日', 'Orion生日')) else 'user_birthday'
         return {row['ref']: .9 if row['ref'] == 'scene:' + target else .1 for row in documents}
 
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient', Embedding)
-    monkeypatch.setattr('serein.recall.routing.route_query', lambda *args, **kwargs: {
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient', Embedding)
+    monkeypatch.setattr('lattice.recall.routing.route_query', lambda *args, **kwargs: {
         'route': 'present_chitchat', 'action': 'recall', 'reason': 'uncertain_route',
         'scores': [{'name': 'present_chitchat', 'action': 'skip', 'score': .47, 'threshold': .6}],
     })
@@ -186,7 +186,7 @@ def test_hook_marks_its_input_as_the_users_original_utterance():
     from types import SimpleNamespace
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from serein.api.gateway import routes
+    from lattice.api.gateway import routes
 
     captured = {}
 
@@ -210,10 +210,10 @@ def test_hook_marks_its_input_as_the_users_original_utterance():
 def test_gateway_and_hook_resolve_the_same_speaker_and_deliver_body(
         birthday_recall, monkeypatch, query, target, rank_query, fact):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.bootstrap import initialize
+    from lattice.api.http import create_app
+    from lattice.bootstrap import initialize
     from dataclasses import replace
-    from examples.hook_host import SereinHook
+    from examples.hook_host import LatticeHook
     from test_public_settings import configure
 
     engine, embedded, ranked = birthday_recall
@@ -221,8 +221,8 @@ def test_gateway_and_hook_resolve_the_same_speaker_and_deliver_body(
     client = TestClient(create_app(replace(engine.settings, writable=True), token='synthetic', live=True),
                         headers={'Authorization': 'Bearer synthetic'})
     configure(client).raise_for_status()
-    monkeypatch.setattr('serein.configured_models.memory_ready', lambda _: True)
-    monkeypatch.setattr('serein.application.Services.recall', lambda self, text, **options: engine.run(text, **options))
+    monkeypatch.setattr('lattice.configured_models.memory_ready', lambda _: True)
+    monkeypatch.setattr('lattice.application.Services.recall', lambda self, text, **options: engine.run(text, **options))
     model_inputs = []
 
     def host_model(messages):
@@ -234,14 +234,14 @@ def test_gateway_and_hook_resolve_the_same_speaker_and_deliver_body(
     async def complete(model, body, **options):
         return host_model(body['messages'])
 
-    monkeypatch.setattr('serein.api.chat.complete', complete)
+    monkeypatch.setattr('lattice.api.chat.complete', complete)
     messages = [{'role': 'user', 'content': query}]
     response = client.post('/v1/chat/completions', json={
-        'messages': messages, 'serein': {'window_id': 'gateway-window', 'memory': True}})
+        'messages': messages, 'lattice': {'window_id': 'gateway-window', 'memory': True}})
     response.raise_for_status()
     assert response.json()['choices'][0]['message']['content'] == fact
 
-    hook = SereinHook('https://serein.example', 'synthetic')
+    hook = LatticeHook('https://lattice.example', 'synthetic')
 
     def request(method, path, body=None):
         result = client.request(method, path, json=body)
@@ -256,12 +256,12 @@ def test_gateway_and_hook_resolve_the_same_speaker_and_deliver_body(
     assert [row[0] for row in ranked] == [rank_query, rank_query]
     receipts = client.get('/v1/host/deliveries').json()['items']
     assert {(row['window_id'], row['reported_by']) for row in receipts} == {
-        ('gateway-window', 'serein_chat_proxy'), ('hook-window', 'host')}
+        ('gateway-window', 'lattice_chat_proxy'), ('hook-window', 'host')}
     assert all(row['delivered_ids'] == ['scene:' + target] for row in receipts)
 
 
 def test_instance_rename_changes_next_rerank_query_without_rewriting_memories(birthday_recall):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
 
     engine, embedded, ranked = birthday_recall
     save_settings(engine.settings.database, {'identity': {'ai_name': 'Lyra', 'user_name': 'Nori'}})

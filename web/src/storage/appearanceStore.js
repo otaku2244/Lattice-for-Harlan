@@ -1,4 +1,4 @@
-const endpoint = '/__serein/appearance/images';
+const endpoint = '/__lattice/appearance/images';
 const maximum = 2 * 1024 * 1024;
 
 async function result(response) {

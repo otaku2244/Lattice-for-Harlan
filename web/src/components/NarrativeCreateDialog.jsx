@@ -3,7 +3,7 @@ import { X } from "@phosphor-icons/react";
 import { createUuid } from "../utils/createUuid.js";
 
 async function request(action, body) {
-  const response = await fetch(`/__serein/narrative-${action}`, {
+  const response = await fetch(`/__lattice/narrative-${action}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
   const payload = await response.json();

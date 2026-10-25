@@ -4,15 +4,15 @@ import pytest
 import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store, encode
-from serein.core.personal import Personal
-from serein.legacy_migration.scan import scan
-from serein.legacy_migration.workflow import Migration
-from serein.legacy_migration.history import run_history_repair
-from serein.legacy_migration.comments import import_comments
-from serein.api.scenes import routes
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store, encode
+from lattice.core.personal import Personal
+from lattice.legacy_migration.scan import scan
+from lattice.legacy_migration.workflow import Migration
+from lattice.legacy_migration.history import run_history_repair
+from lattice.legacy_migration.comments import import_comments
+from lattice.api.scenes import routes
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def test_new_migration_projects_notes_preserves_raw_and_body(setup):
     assert expected==plan['fingerprint']
     key=migrate(settings,plan)
     app=FastAPI();app.include_router(routes(settings,None,[]))
-    view=TestClient(app).post('/api/serein/memory-projection',json={}).json()
+    view=TestClient(app).post('/api/lattice/memory-projection',json={}).json()
     # The actual frontend projection must receive the notes, not only an internal receipt.
     text=json.dumps(view,ensure_ascii=False)
     assert 'Original user note' in text and 'AI year ring' in text and 'Old Friend' in text

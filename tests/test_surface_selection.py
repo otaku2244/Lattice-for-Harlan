@@ -4,12 +4,12 @@ import sqlite3
 
 import pytest
 
-from serein.config import Settings
-from serein.core import Store
-from serein.recall.index import build_index,content_stamp
-from serein.recall.passages import ensure_tables
-from serein.recall.service import Recall
-from serein.deployment import save_settings
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.recall.index import build_index,content_stamp
+from lattice.recall.passages import ensure_tables
+from lattice.recall.service import Recall
+from lattice.deployment import save_settings
 
 
 @pytest.fixture
@@ -17,11 +17,11 @@ def legacy(tmp_path,monkeypatch):
     profile=dict(model='test',provider_host='test.invalid',query_instruction='',document_instruction='',max_chars=6000)
     settings=Settings(tmp_path/'memory.db',tmp_path/'index.db',embedding={'endpoint':'unused','api_key_env':'unused'},
                       recall={'routing_file':'test-routes','max_cards':2})
-    monkeypatch.setattr('serein.recall.routing.route_query',lambda *a,**kw:{'route':'recall_needed','action':'recall'})
+    monkeypatch.setattr('lattice.recall.routing.route_query',lambda *a,**kw:{'route':'recall_needed','action':'recall'})
     class Embedding:
         def __init__(self,*a,**kw):pass
         def query(self,text):return dict(query=text,profile=profile,embedding=[1.,0.])
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient',Embedding)
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient',Embedding)
     def build(rows,metadata=None,bodies=None):
         with Store(settings.database) as store:
             for key,kind,score,day in rows:
@@ -123,8 +123,8 @@ def test_passage_winner_keeps_short_canonical_body_whole_for_reranker(legacy,mon
                 ('long',number,stamp,number*10,number*10+4,f'证据 {number}',json.dumps([score,math.sqrt(1-score*score)]),2,'test'))
     from dataclasses import replace
     engine.policy=replace(engine.policy,passages_enabled=True)
-    monkeypatch.setattr('serein.recall.passages.slices',lambda *a,**kw:pytest.fail('Recall attempted to split memory'))
-    monkeypatch.setattr('serein.recall.passages.fill_passages',lambda *a,**kw:pytest.fail('Recall attempted to generate passage vectors'))
+    monkeypatch.setattr('lattice.recall.passages.slices',lambda *a,**kw:pytest.fail('Recall attempted to split memory'))
+    monkeypatch.setattr('lattice.recall.passages.fill_passages',lambda *a,**kw:pytest.fail('Recall attempted to generate passage vectors'))
     result=engine.run('手机维修',method='semantic',min_cosine=.5)
     assert calls[0]['rerank_text']=='title: 手机维修 long\nbody: 手机屏幕坏了，我们带着它到店里维修。'
     assert result['cards'][0]['score']==.92
@@ -152,7 +152,7 @@ def test_weak_automation_topic_alone_does_not_retrieve(legacy,query):
 
 
 def test_weak_phrase_does_not_leak_fragments_or_hide_real_topic():
-    from serein.recall.germany.recall_policy import RecallPolicy
+    from lattice.recall.germany.recall_policy import RecallPolicy
     policy=RecallPolicy()
     terms=policy.specific_query_terms('影分身修好了通知推送的误召回')
     assert terms==policy.specific_query_terms('修好了通知推送的')
@@ -189,7 +189,7 @@ def test_provider_failure_does_not_fall_back_to_vector_injection(legacy):
 
 
 def test_provider_auth_failure_is_visible_without_admitting_candidates(legacy):
-    from serein.adapters.reranker import RerankerProviderError
+    from lattice.adapters.reranker import RerankerProviderError
     _,build=legacy
     engine,_=build([('s','scene',.99,'2026-09-01')])
     def failed(query,docs):raise RerankerProviderError('http_401','Authentication failed')
@@ -215,7 +215,7 @@ def test_replaced_and_scene_covered_events_are_filtered_before_reranker(legacy,m
         seen.extend(row['ref'] for row in docs)
         return {row['ref']:.1 for row in docs}
     engine.reranker=rank
-    monkeypatch.setattr('serein.core.reader.Reader.read',lambda *a,**kw:pytest.fail('candidate snapshot used Reader.read'))
+    monkeypatch.setattr('lattice.core.reader.Reader.read',lambda *a,**kw:pytest.fail('candidate snapshot used Reader.read'))
     result=engine.run('手机维修',method='semantic',min_cosine=.5)
     assert set(seen)=={'event:keep','scene:cover'}
     assert result['candidate_retrieval']['snapshot_suppressed']['replaced_by_event']==1
@@ -293,9 +293,9 @@ def test_relation_candidate_stays_within_the_resolved_arc(legacy,monkeypatch):
     engine,calls=build([(f's{i}','scene',.9-i*.02,'2026-09-01') for i in range(6)]+
         [('outside','scene',.75,'2026-09-01'),('inside','scene',.4,'2026-09-01')])
     link_scenes(settings,[('out','s0','outside',1),('in','s0','inside',1)])
-    monkeypatch.setattr('serein.recall.typed_surface.scope_members',lambda reader:{
+    monkeypatch.setattr('lattice.recall.typed_surface.scope_members',lambda reader:{
         'arc:synthetic':{('scene',f's{i}') for i in range(6)}|{('scene','inside')}})
-    monkeypatch.setattr('serein.recall.typed_surface.CandidateGateway._passage_candidate_shadow_debug',
+    monkeypatch.setattr('lattice.recall.typed_surface.CandidateGateway._passage_candidate_shadow_debug',
         lambda *args:{'status':'retrieved','entity_scope':{'scope_anchor':{'arc_key':'arc:synthetic'},
             'operator':'none'},'lanes':{}})
     result=engine.run('手机维修',method='semantic',min_cosine=.5)
@@ -307,8 +307,8 @@ def test_relation_candidate_stays_within_the_resolved_arc(legacy,monkeypatch):
 def test_association_api_toggle_is_persistent_live_and_independent(legacy,monkeypatch,old_settings):
     from dataclasses import replace
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.recall import typed_surface
+    from lattice.api.http import create_app
+    from lattice.recall import typed_surface
     settings,build=legacy
     engine,_=build([(f's{i}','scene',.9-i*.02,'2026-09-01') for i in range(6)]+
                    [('neighbor','scene',.4,'2026-09-01'),('other','scene',.3,'2026-09-01')])

@@ -1,10 +1,10 @@
-# Serein 排错指南
+# Lattice 排错指南
 
-更新日期：2026-10-03。适用于当前 Serein 一键脚本。第一次安装见 [部署指南与常用命令](deployment-guide.md)。下方示例默认端口是 **18217**；修改过端口时请替换。
+更新日期：2026-10-03。适用于当前 Lattice 一键脚本。第一次安装见 [部署指南与常用命令](deployment-guide.md)。下方示例默认端口是 **18217**；修改过端口时请替换。
 
 ## 先按这个顺序查
 
-1. 进入当前 Serein 安装目录，运行 `se`，选 **12 · 故障排查**。
+1. 进入当前 Lattice 安装目录，运行 `se`，选 **12 · 故障排查**。
 2. 按报告中的 `FAIL` 先修复环境、配置或服务，再处理 `WARN`。最近日志可能包含已经解决的历史错误。
 3. 菜单 **4 → 查看状态／最近日志** 查详情；需要重启时用菜单 **2**。
 4. 本机能连、别的设备不能连，检查菜单 **5** 的访问入口、防火墙和云安全组。
@@ -39,19 +39,19 @@ Windows 用 `python .\scripts\doctor.py`。排查只读，不重启、不修改�
 
 ## 找不到 se 或启动入口用错
 
-`se` 按当前目录打开实例，先进入目录。看到 `Please enter a Serein directory before running se` 时，是目录不对。
+`se` 按当前目录打开实例，先进入目录。看到 `Please enter a Lattice directory before running se` 时，是目录不对。
 
 ```sh
-cd ~/Serein
+cd ~/Lattice
 bash scripts/one_click.sh
 ```
 
 ```powershell
-cd D:\Serein
+cd D:\Lattice
 powershell -ExecutionPolicy Bypass -File .\scripts\one_click.ps1
 ```
 
-首次注册快捷命令后可能需要新开终端；已有其他同名 `se` 命令时不会覆盖。原启动入口始终可用。不要从旧 Ombre 目录运行 `ob` 来管理 Serein。
+首次注册快捷命令后可能需要新开终端；已有其他同名 `se` 命令时不会覆盖。原启动入口始终可用。不要从旧 Ombre 目录运行 `ob` 来管理 Lattice。
 
 ## Python Node 或 Docker 环境不满足
 
@@ -74,7 +74,7 @@ Termux 缺编译工具时按 [部署指南](deployment-guide.md#安卓-termux)�
 
 ## SSH 连接超时或被拒绝
 
-SSH 在 Serein 启动前就可能失败，应先解决服务器连接：
+SSH 在 Lattice 启动前就可能失败，应先解决服务器连接：
 
 ```sh
 ssh 用户名@服务器地址
@@ -82,11 +82,11 @@ ssh 用户名@服务器地址
 
 把用户名、地址和 SSH 端口换成服务器实际值。超时先查云安全组、系统防火墙、当前公网 IP 是否允许；被拒绝检查 SSH 服务是否在监听、端口是否正确；鉴权失败核对登录用户和 SSH 密钥。
 
-使用默认 SSH 端口时放行 TCP 22，并尽量限制为自己的管理 IP。若改过 SSH 端口，放行对应端口。Serein 的 18217 端口与 SSH 端口是两回事，网页访问规则不能替代 SSH 规则。
+使用默认 SSH 端口时放行 TCP 22，并尽量限制为自己的管理 IP。若改过 SSH 端口，放行对应端口。Lattice 的 18217 端口与 SSH 端口是两回事，网页访问规则不能替代 SSH 规则。
 
 ## 构建时下载超时或机器卡住
 
-先找到失败阶段，不要一律归因于 Serein 配置：
+先找到失败阶段，不要一律归因于 Lattice 配置：
 
 | 失败位置 | 说明 | 排查方向 |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ docker pull python:3.13-slim
 docker pull node:22-bookworm-slim
 ```
 
-这些命令只用于验证镜像下载，不会安装 Serein。超时应先修复可信网络／代理配置，再重试菜单 1；更换 VPS 不是默认处理方式。需要跨机器传镜像时，必须匹配当前源码、CPU 架构和实例实际镜像名，旧 Ombre 的镜像名与 ACR 重打标签命令不能直接套用。当前一键脚本不提供自动 ACR 中转。
+这些命令只用于验证镜像下载，不会安装 Lattice。超时应先修复可信网络／代理配置，再重试菜单 1；更换 VPS 不是默认处理方式。需要跨机器传镜像时，必须匹配当前源码、CPU 架构和实例实际镜像名，旧 Ombre 的镜像名与 ACR 重打标签命令不能直接套用。当前一键脚本不提供自动 ACR 中转。
 
 `Killed`、退出码 137 或机器失去响应可能与内存不足有关，结合系统日志确认。先停同机旧服务，留出构建空间；脚本会依次构建两个镜像。不要通过不断同时重试增加负担。
 
@@ -135,7 +135,7 @@ Linux 可用 `ss -ltnp` 查看监听；Windows 用：
 Get-NetTCPConnection -State Listen | Where-Object LocalPort -eq 18217
 ```
 
-将端口换成实际值，再确认占用者属于哪个实例。不要因为看到 PID 就直接结束未知服务。需要停止 Serein 时用对应目录的菜单 4，不要手工删除运行控制文件。
+将端口换成实际值，再确认占用者属于哪个实例。不要因为看到 PID 就直接结束未知服务。需要停止 Lattice 时用对应目录的菜单 4，不要手工删除运行控制文件。
 
 ## ready 返回 503 或连接被拒绝
 
@@ -168,24 +168,24 @@ Windows 用 `curl.exe`。
 
 | 正在连接谁 | 用什么凭据 |
 | --- | --- |
-| 浏览器登录 Serein 页面 | 安装时设置的页面用户名／密码 |
-| 聊天客户端或静态 MCP 访问 Serein | `deploy/secrets/api-token` 中的 Gateway Key |
-| Serein 请求模型提供方 | 网页“设置 → 模型”里对应上游的 API Key |
-| MCP OAuth 的 Serein 授权页 | Gateway Key，后续由客户端使用 OAuth 凭据 |
+| 浏览器登录 Lattice 页面 | 安装时设置的页面用户名／密码 |
+| 聊天客户端或静态 MCP 访问 Lattice | `deploy/secrets/api-token` 中的 Gateway Key |
+| Lattice 请求模型提供方 | 网页“设置 → 模型”里对应上游的 API Key |
+| MCP OAuth 的 Lattice 授权页 | Gateway Key，后续由客户端使用 OAuth 凭据 |
 
 客户端 API Key 输入框填原始 Gateway Key；自定义 `Authorization` 请求头才写 `Bearer ` 前缀。改页面密码用菜单 0，改 Gateway Key 用菜单 6，两者不能互相修复。
 
-菜单 6 会让旧静态 Key 和已发放 OAuth 凭据失效，所有客户端更新 Key，OAuth 客户端重新授权。上游返回 401 时，改 Serein 的 Gateway Key 通常无效，应检查对应模型站点的密钥。
+菜单 6 会让旧静态 Key 和已发放 OAuth 凭据失效，所有客户端更新 Key，OAuth 客户端重新授权。上游返回 401 时，改 Lattice 的 Gateway Key 通常无效，应检查对应模型站点的密钥。
 
 ## 模型列表为空或出现 400 404 429
 
-先核对 Base URL、上游协议、真实模型号和设置是否保存。客户端连接 `你的入口/v1`，拉取列表后用显示的模型名；上游模型地址和客户端访问 Serein 的地址不要混填。
+先核对 Base URL、上游协议、真实模型号和设置是否保存。客户端连接 `你的入口/v1`，拉取列表后用显示的模型名；上游模型地址和客户端访问 Lattice 的地址不要混填。
 
 Embedding／Reranker 被排除在聊天列表之外是正常行为。提供方不支持拉取模型时可以手动添加；拉取成功仍需要保存。更改模型列表后刷新客户端列表，不要使用已移除的名字。
 
 400／404 看上游具体错误：模型名、协议、工具调用格式或该模型能力可能不匹配。先用一个普通文本请求验证，不要直接批量重试迁移任务。429 先查余额、配额和限流；反复点击重试不会增加配额。
 
-需要手动核对 Serein 模型列表时，在安装目录运行下面只读查询；输出模型名，不输出 Key。地址换成实际入口，不要把真实密钥写进命令历史：
+需要手动核对 Lattice 模型列表时，在安装目录运行下面只读查询；输出模型名，不输出 Key。地址换成实际入口，不要把真实密钥写进命令历史：
 
 ```python
 from pathlib import Path
@@ -200,13 +200,13 @@ with urlopen(request, timeout=15) as response:
 
 ## 聊天能用但没有召回记忆
 
-先确认聊天真的经过 Serein 的 `/v1` 网关，或宿主已经实现 Hook 注入。只连接 MCP 并不自动完成每轮召回。
+先确认聊天真的经过 Lattice 的 `/v1` 网关，或宿主已经实现 Hook 注入。只连接 MCP 并不自动完成每轮召回。
 
 再检查自动记忆开关、Embedding／Reranker 选择、语义路由和索引准备。菜单 12 与菜单 4 的本地检索校验不调用模型；报告未就绪时，先处理具体阶段，不要直接调低召回阈值。
 
 在网页召回观察中区分候选、准入、冷却和实际交付。没有匹配内容可以不召回；重排失败也不会把未经评分的候选直接注入。看到向量候选不代表模型已收到记忆。
 
-同一窗口固定 `X-Serein-Window-ID`，新窗口换值。所有客户端都不填时会共用 `main` 的冷却与提醒轮次。编辑正文、换 Embedding 后按页面提示补齐索引；不要像旧 Markdown 桶那样在 Obsidian 或同步软件中直接改 Serein 主库。
+同一窗口固定 `X-Lattice-Window-ID`，新窗口换值。所有客户端都不填时会共用 `main` 的冷却与提醒轮次。编辑正文、换 Embedding 后按页面提示补齐索引；不要像旧 Markdown 桶那样在 Obsidian 或同步软件中直接改 Lattice 主库。
 
 ## 更新被拒绝或没有出现菜单 12
 
@@ -222,7 +222,7 @@ with urlopen(request, timeout=15) as response:
 
 打标失败先看网页具体错误，修复模型连接后重试 1 条，验证通过再重试剩余失败项。已有成功进度保留；格式校验失败、超时也可能计费。失败后换成不同备份或重建身份配置，可能破坏原批次续跑条件。
 
-Serein 正文主库是 SQLite，旧 Ombre 的 Markdown 桶与 Syncthing 加密接收排错只适用于旧来源。不要把运行中的 Serein 主库放进双向同步，也不要对它执行旧版 `backfill_embeddings.py` 或桶去重删除脚本。
+Lattice 正文主库是 SQLite，旧 Ombre 的 Markdown 桶与 Syncthing 加密接收排错只适用于旧来源。不要把运行中的 Lattice 主库放进双向同步，也不要对它执行旧版 `backfill_embeddings.py` 或桶去重删除脚本。
 
 ## 提供这些信息再求助
 

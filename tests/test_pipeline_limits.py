@@ -5,17 +5,17 @@ from datetime import datetime,timedelta,timezone
 import httpx
 import pytest
 from test_public_features import settings,ingest,output_for,synthetic_runner
-from serein.core.store import Store,encode
-from serein.deployment import save_settings
-from serein.extensions import pipeline as p
-from serein.extensions.pipeline_limits import blocks
-from serein.imports import stage,advance_import
-from serein import work_tasks as work
+from lattice.core.store import Store,encode
+from lattice.deployment import save_settings
+from lattice.extensions import pipeline as p
+from lattice.extensions.pipeline_limits import blocks
+from lattice.imports import stage,advance_import
+from lattice import work_tasks as work
 
 
 def test_larger_default_budgets_preserve_saved_limits(settings):
-    from serein.deployment import read_settings
-    from serein.extensions.pipeline_limits import DEFAULTS
+    from lattice.deployment import read_settings
+    from lattice.extensions.pipeline_limits import DEFAULTS
     policy = read_settings(settings.database)['pipeline']
     assert policy['max_input_chars'] == DEFAULTS['max_input_chars'] == 40000
     assert policy['max_prompt_chars'] == DEFAULTS['max_prompt_chars'] == 200000
@@ -65,7 +65,7 @@ def test_time_blocks_and_unknown_time_twenty_rounds_preserve_ids():
 
 
 def test_lowered_input_budget_rebatches_using_full_routing_material(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'u1','session_id':'budget','role':'user','text':'u'*40,'created_at':'2025-01-01T00:00:00Z'},
         {'source_event_id':'a1','session_id':'budget','role':'assistant','text':'a'*40,'created_at':'2025-01-01T00:01:00Z'},
@@ -95,7 +95,7 @@ def test_lowered_input_budget_rebatches_using_full_routing_material(settings):
 
 
 def test_rebatch_reuses_only_exact_router_frame_with_explicit_provenance(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'u1','session_id':'provenance','role':'user','text':'u'*40,'created_at':'2025-01-01T00:00:00Z'},
         {'source_event_id':'a1','session_id':'provenance','role':'assistant','text':'a'*40,'created_at':'2025-01-01T00:01:00Z'},
@@ -142,7 +142,7 @@ def test_rebatch_reuses_only_exact_router_frame_with_explicit_provenance(setting
 
 
 def test_rebatch_cleanup_preserves_route_owned_by_different_explicit_producer(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'u1','session_id':'producer','role':'user','text':'u'*40,'created_at':'2025-01-01T00:00:00Z'},
         {'source_event_id':'a1','session_id':'producer','role':'assistant','text':'a'*40,'created_at':'2025-01-01T00:01:00Z'},
@@ -179,7 +179,7 @@ def test_rebatch_cleanup_preserves_route_owned_by_different_explicit_producer(se
 
 
 def test_unchanged_input_budget_keeps_valid_batch_with_parked_following_unit(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([
         {'source_event_id':'u1','session_id':'parked','role':'user','text':'u'*40,'created_at':'2025-01-01T00:00:00Z'},
         {'source_event_id':'a1','session_id':'parked','role':'assistant','text':'a'*40,'created_at':'2025-01-01T00:01:00Z'},
@@ -210,8 +210,8 @@ def test_prompt_budget_change_applies_to_existing_frozen_job(settings):
 
 
 def test_import_boundary_keeps_concurrent_new_chats_and_retires_mixed_plan(settings,monkeypatch):
-    from serein.compat.raw_archive import raw_archive
-    from serein.compat.originals import Originals
+    from lattice.compat.raw_archive import raw_archive
+    from lattice.compat.originals import Originals
     data={'id':'imported-history','messages':[{'role':'user','content':'historical-'+'x'*55720},
                                            {'role':'assistant','content':'historical reply'}]}
     data['messages'] += [{'role':'user' if i%2==0 else 'assistant','content':'historical extra '+str(i)} for i in range(24)]
@@ -252,7 +252,7 @@ def test_import_boundary_keeps_concurrent_new_chats_and_retires_mixed_plan(setti
 
 
 def test_legacy_archive_only_originals_never_enter_daytime_routing(settings,monkeypatch):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     raw_archive(settings).ingest([{'source_event_id':str(i),'session_id':'old','role':m['role'],
         'text':m['content'],'created_at':m['created_at']} for i,m in enumerate(pairs(5,True))],source='old-chat')
     p.initialize(settings.database)
@@ -269,7 +269,7 @@ def test_legacy_archive_only_originals_never_enter_daytime_routing(settings,monk
 def test_116_unknown_time_originals_are_processed_in_small_batches(settings):
     messages=[{'role':m['role'],'content':m['content']} for m in pairs(58)]
     # Seed raw dialogue directly; imported history now remains archive-only.
-    from serein.imports import parse_file, ImportArchive
+    from lattice.imports import parse_file, ImportArchive
     data=parse_file(json.dumps({'id':'one-session','messages':messages}),'conversation.json',{'user_name':'User','ai_name':'AI'})
     ImportArchive({'raw_events':{'db_path':str(settings.database)}}).ingest(data['entries'])
     tasks=[]
@@ -339,7 +339,7 @@ def test_interrupted_batch_keeps_its_normalized_routes_after_daytime_flush(setti
     routed=asyncio.run(p.route_batch(settings.database,batch,data,synthetic_runner))
     assignments,_,_=p.route_result(data,routed)
     with Store(settings.database) as store:
-        from serein.extensions import pipeline_tracks as track_state
+        from lattice.extensions import pipeline_tracks as track_state
         track_state.persist(store.conn,routed['track_state_updates'],data['scope'])
         for assignment in assignments:
             store.conn.execute('INSERT INTO pipeline_routes VALUES (?,?)',
@@ -395,7 +395,7 @@ def test_id_correction_retry_keeps_bad_output_and_accepts_only_valid(settings,mo
             if role=='track_router':output['message_assignments'][0]['source_message_id']=999999
             else:output['events'][0]['owned_unit_roots']=[999999]
         return {'choices':[{'message':{'content':json.dumps(output)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     result=asyncio.run(p.advance(settings.database,include_recent=True))
     assert result['status']=='awaiting_agent' and result['role']!=role
     assert len(calls)==2 and calls[0][0]['request_timeout_seconds']==600
@@ -413,7 +413,7 @@ def test_timeout_durable_diagnostic_and_prompt_budget_before_model(settings,monk
     called=[]
     async def timeout(model,payload):
         called.append(model);raise httpx.ReadTimeout('synthetic')
-    monkeypatch.setattr('serein.model_runtime.complete',timeout)
+    monkeypatch.setattr('lattice.model_runtime.complete',timeout)
     with pytest.raises(httpx.ReadTimeout):asyncio.run(p.advance(settings.database,include_recent=True))
     assert called[0]['request_timeout_seconds']==900
     state=work.status(settings.database,'pipeline')
@@ -436,7 +436,7 @@ def test_empty_structured_output_reports_length_exhaustion(settings,monkeypatch)
         calls.append(payload)
         return {'choices':[{'message':{'content':''},'finish_reason':'length'}],
                 'usage':{'completion_tokens':8192,'completion_tokens_details':{'reasoning_tokens':8192}}}
-    monkeypatch.setattr('serein.model_runtime.complete',empty)
+    monkeypatch.setattr('lattice.model_runtime.complete',empty)
     result=asyncio.run(p.advance(settings.database,include_recent=True))
     assert result['status']=='paused'
     assert '未返回最终 JSON 内容' in result['reason'] and '输出预算耗尽' in result['reason'] and '8192' in result['reason']
@@ -449,9 +449,9 @@ def test_empty_structured_output_reports_length_exhaustion(settings,monkeypatch)
 
 def test_legacy_116_originals_eleven_router_jobs_resume_without_repeating_them(settings):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.compat.raw_archive import raw_archive
-    from serein.core.store import digest
+    from lattice.api.http import create_app
+    from lattice.compat.raw_archive import raw_archive
+    from lattice.core.store import digest
     stamp=datetime(2025,1,1,tzinfo=timezone.utc)
     records=[]
     for n in range(116):
@@ -478,7 +478,7 @@ def test_legacy_116_originals_eleven_router_jobs_resume_without_repeating_them(s
     save_settings(settings.database,{'models':[{'id':'local','model':'synthetic','base_url':'http://127.0.0.1:9/v1'}],
                                      'assignments':{'event_curator':'local'}})
     client=TestClient(create_app(settings,token='synthetic',live=True),headers={'Authorization':'Bearer synthetic'})
-    from serein import work_tasks
+    from lattice import work_tasks
     async def quiet_tick():return {'status':'settled_today'}
     asyncio.run(work_tasks.execute(settings.database,'pipeline',quiet_tick))
     assert work_tasks.status(settings.database,'pipeline')['status']=='idle'
@@ -553,7 +553,7 @@ def test_manual_auto_boundary_restore_requeues_only_boundary_originals(settings)
 
 def test_pipeline_status_and_restore_endpoint_show_auto_boundary_backlog(settings):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
+    from lattice.api.http import create_app
     p.initialize(settings.database)
     save_settings(settings.database,{'pipeline':{'auto_enabled':False}})
     ingest(settings,1)
@@ -631,7 +631,7 @@ def test_router_replay_uses_ordinal_in_accepted_request(settings):
 
 def test_needs_repair_status_is_visible_and_explicitly_revalidated(settings):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
+    from lattice.api.http import create_app
     ingest(settings);p.initialize(settings.database)
     batch=p.new_batch(settings.database,True);data=json.loads(batch['input_json'])
     track='session_'+data['scope']+'_track_0001'
@@ -727,7 +727,7 @@ def test_component_signature_preserves_bridge_endpoints_and_ownership():
 
 def test_snapshot_preserves_unused_scope_and_newer_track_cards(settings):
     from copy import deepcopy
-    from serein.extensions import pipeline_tracks as tracks
+    from lattice.extensions import pipeline_tracks as tracks
     ingest(settings);p.initialize(settings.database)
     batch=p.new_batch(settings.database,True);data=json.loads(batch['input_json'])
     routed=asyncio.run(p.route_batch(settings.database,batch,data,synthetic_runner))

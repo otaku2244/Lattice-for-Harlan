@@ -31,10 +31,10 @@ try {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== base) { await route.abort(); return; }
-    if (!url.pathname.startsWith('/__serein/')) { await route.continue(); return; }
+    if (!url.pathname.startsWith('/__lattice/')) { await route.continue(); return; }
     let payload = { status: 'ok', items: [], has_more: false };
     const args = route.request().method() === 'POST' ? route.request().postDataJSON() || {} : {};
-    if (url.pathname === '/__serein/gateway/injections') {
+    if (url.pathname === '/__lattice/gateway/injections') {
       calls++;
       const newer = args.afterId != null;
       let selected = rows.filter(row => newer ? row.id > args.afterId : !args.beforeId || row.id < args.beforeId);
@@ -44,9 +44,9 @@ try {
         next_before_id: items.at(-1)?.id || null, next_after_id: newer ? items.at(-1)?.id || args.afterId : undefined,
         reviewed_items: rows.filter(row => args.reviewIds?.includes(row.id) && !items.some(item => item.id === row.id)),
       };
-    } else if (url.pathname === '/__serein/personal' && route.request().method() === 'POST') {
+    } else if (url.pathname === '/__lattice/personal' && route.request().method() === 'POST') {
       payload = { ...args, revision: 1 };
-    } else if (url.pathname === '/__serein/gateway/semantic-routes') {
+    } else if (url.pathname === '/__lattice/gateway/semantic-routes') {
       payload = { routes: [{ name: 'general', label: '通用', action: 'recall', utterances: [] }], dataset_version: 1 };
     }
     await route.fulfill({ json: payload });

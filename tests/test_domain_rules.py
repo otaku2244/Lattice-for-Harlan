@@ -6,13 +6,13 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store, Conflict, encode
-from serein.deployment import DEFAULT_DOMAINS, read_settings, save_settings
-from serein.recall.index import build_index
-from serein.recall.service import Recall
+from lattice.api.http import create_app
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store, Conflict, encode
+from lattice.deployment import DEFAULT_DOMAINS, read_settings, save_settings
+from lattice.recall.index import build_index
+from lattice.recall.service import Recall
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def test_old_rules_apply_to_both_and_old_client_cannot_erase_overrides(instance)
 
 def test_settings_api_independent_rules_conflicts_and_no_memory_mutation(instance):
     client = TestClient(create_app(instance, token='synthetic', live=True), headers={'Authorization':'Bearer synthetic'})
-    from serein.imports import initialize_imports
+    from lattice.imports import initialize_imports
     initialize_imports(instance.database)
     with Store(instance.database, read_only=True) as store:
         before = [store.read(kind) for kind in ('event', 'scene')]
@@ -85,8 +85,8 @@ def test_compare_and_save_is_inside_the_database_write_lock(instance):
 
 @pytest.mark.parametrize('kind', ['event', 'scene'])
 def test_explicit_only_checks_title_id_cue_but_not_body_or_entity(instance, kind):
-    from serein.recall.query import Query
-    from serein.recall.scene import domain_rejection
+    from lattice.recall.query import Query
+    from lattice.recall.scene import domain_rejection
     save_settings(instance.database, {'tagging':{'policies':{kind:{'life':'explicit_only'}}}})
     engine = Recall(instance)
     with Store(instance.database, read_only=True) as store:
@@ -101,9 +101,9 @@ def test_explicit_only_checks_title_id_cue_but_not_body_or_entity(instance, kind
 
 @pytest.mark.parametrize('kind', ['event', 'scene'])
 def test_entity_candidates_apply_rules_for_each_kind(instance, kind):
-    from serein.recall.entities import ensure_tables, candidates, content_stamp, evidence_stamp
-    from serein.recall.index import Search
-    from serein.recall.query import Query
+    from lattice.recall.entities import ensure_tables, candidates, content_stamp, evidence_stamp
+    from lattice.recall.index import Search
+    from lattice.recall.query import Query
     with sqlite3.connect(instance.index) as conn, Store(instance.database, read_only=True) as store:
         ensure_tables(conn)
         for owner in ('event', 'scene'):
@@ -126,8 +126,8 @@ def test_typed_auto_candidates_use_the_correct_rules(instance, tmp_path, monkeyp
     class Embedding:
         def __init__(self, *args, **kwargs): pass
         def query(self, text, **kwargs): return {'query':text, 'profile':profile, 'embedding':[1,0]}
-    monkeypatch.setattr('serein.adapters.embedding.EmbeddingClient', Embedding)
-    monkeypatch.setattr('serein.recall.routing.route_query', lambda *args, **kwargs: {'route':'recall_needed','action':'recall','reason':'synthetic','scores':[]})
+    monkeypatch.setattr('lattice.adapters.embedding.EmbeddingClient', Embedding)
+    monkeypatch.setattr('lattice.recall.routing.route_query', lambda *args, **kwargs: {'route':'recall_needed','action':'recall','reason':'synthetic','scores':[]})
     policy = tmp_path/'policy.json'
     policy.write_text('{}', encoding='utf-8')
     configured = replace(instance, embedding={'endpoint':'unused', 'api_key_env':'unused'},
@@ -145,9 +145,9 @@ def test_typed_auto_candidates_use_the_correct_rules(instance, tmp_path, monkeyp
 
 @pytest.mark.parametrize('blocked', ['event', 'scene'])
 def test_relation_diffusion_checks_both_endpoints_and_adds_at_most_one(instance, blocked):
-    from serein.core.reader import Reader
-    from serein.recall.query import Query
-    from serein.recall.scene import related_candidates
+    from lattice.core.reader import Reader
+    from lattice.recall.query import Query
+    from lattice.recall.scene import related_candidates
     save_settings(instance.database, {'features':{'association':True}})
     with Store(instance.database) as store:
         store.create('second', 'scene', '第二个合成标题', '雨亭约定后续', metadata={'canonical_domain':'life'})

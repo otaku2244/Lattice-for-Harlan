@@ -17,7 +17,7 @@ async function freePort() {
 }
 
 test('gateway separates web auth from API auth, saves settings and streams responses', {timeout:30000}, async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'serein-gateway-'));const salt='1234567890abcdef';
+  const dir=mkdtempSync(join(tmpdir(),'lattice-gateway-'));const salt='1234567890abcdef';
   const record=password=>JSON.stringify({username:'test',salt,hash:scryptSync(password,Buffer.from(salt,'hex'),32).toString('hex')});
   writeFileSync(join(dir,'auth.json'),record('password-one'));writeFileSync(join(dir,'token'),'synthetic-api-key');
   const requests=[];
@@ -84,10 +84,10 @@ test('gateway separates web auth from API auth, saves settings and streams respo
   core.listen(0,'127.0.0.1');await once(core,'listening');
   const port=await freePort(),preview=await freePort();
   const child=spawn(process.execPath,['server/gateway.mjs'],{cwd:new URL('../',import.meta.url),stdio:['ignore','pipe','pipe'],env:{...process.env,
-    SEREIN_MEMORY_URL:`http://127.0.0.1:${core.address().port}`,SEREIN_MEMORY_TOKEN_FILE:join(dir,'token'),
-    SEREIN_WEB_AUTH_FILE:join(dir,'auth.json'),SEREIN_GATEWAY_PORT:String(port),SEREIN_GATEWAY_BIND:'127.0.0.1',SEREIN_PREVIEW_PORT:String(preview),
-    SEREIN_PUBLIC_ORIGIN:'https://memory.example',
-    SEREIN_LEGACY_SOURCE_HOST:dir}});
+    LATTICE_MEMORY_URL:`http://127.0.0.1:${core.address().port}`,LATTICE_MEMORY_TOKEN_FILE:join(dir,'token'),
+    LATTICE_WEB_AUTH_FILE:join(dir,'auth.json'),LATTICE_GATEWAY_PORT:String(port),LATTICE_GATEWAY_BIND:'127.0.0.1',LATTICE_PREVIEW_PORT:String(preview),
+    LATTICE_PUBLIC_ORIGIN:'https://memory.example',
+    LATTICE_LEGACY_SOURCE_HOST:dir}});
   let output='';child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);
   const base=`http://127.0.0.1:${port}`;
   const basic=password=>'Basic '+Buffer.from('test:'+password).toString('base64');
@@ -107,34 +107,34 @@ test('gateway separates web auth from API auth, saves settings and streams respo
     const auth={Authorization:basic('password-one')};
     const page=await fetch(base,{headers:auth});assert.equal(page.status,200);
     assert.ok(!(await page.text()).includes('synthetic-api-key'));
-    const settings=await fetch(base+'/__serein/settings',{headers:auth});assert.equal(settings.status,200);
-    const saved=await fetch(base+'/__serein/settings',{method:'PATCH',headers:{...auth,'Content-Type':'application/json',Origin:base},body:'{"identity":{"user_name":"Example"}}'});
+    const settings=await fetch(base+'/__lattice/settings',{headers:auth});assert.equal(settings.status,200);
+    const saved=await fetch(base+'/__lattice/settings',{method:'PATCH',headers:{...auth,'Content-Type':'application/json',Origin:base},body:'{"identity":{"user_name":"Example"}}'});
     assert.equal(saved.status,200);
     assert.ok(requests.some(r=>r.path==='/v1/settings'&&r.method==='PATCH'&&r.auth==='Bearer synthetic-api-key'));
     const resumeHeaders={...auth,'Content-Type':'application/json',Origin:base};
-    const resume=await fetch(base+'/__serein/resume',{method:'POST',headers:resumeHeaders,body:'{"cursor":""}'});
+    const resume=await fetch(base+'/__lattice/resume',{method:'POST',headers:resumeHeaders,body:'{"cursor":""}'});
     assert.equal(resume.status,200);
     assert.equal(resume.headers.get('cache-control'),'no-store');
     assert.ok(requests.some(r=>r.path==='/v1/extensions/resume'&&r.method==='POST'&&r.auth==='Bearer synthetic-api-key'));
-    assert.equal((await fetch(base+'/__serein/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+    assert.equal((await fetch(base+'/__lattice/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
     const beforeCrossSite=requests.length;
-    assert.equal((await fetch(base+'/__serein/resume',{method:'POST',headers:{...resumeHeaders,Origin:'https://unrelated.example'},body:'{}'})).status,403);
+    assert.equal((await fetch(base+'/__lattice/resume',{method:'POST',headers:{...resumeHeaders,Origin:'https://unrelated.example'},body:'{}'})).status,403);
     assert.equal(requests.length,beforeCrossSite);
     const draft={recent_events:false,selected_ids:Array.from({length:200},(_,index)=>`synthetic-${index}-`+'x'.repeat(100))};
-    const draftPreview=await fetch(base+'/__serein/resume',{method:'POST',headers:resumeHeaders,body:JSON.stringify({selection:draft})});
+    const draftPreview=await fetch(base+'/__lattice/resume',{method:'POST',headers:resumeHeaders,body:JSON.stringify({selection:draft})});
     assert.equal(draftPreview.status,200);
     assert.deepEqual(requests.findLast(r=>r.path==='/v1/extensions/resume'&&r.body).body.selection,draft);
-    const discovery=await fetch(base+'/__serein/settings/models/discover',{method:'POST',headers:{...auth,'Content-Type':'application/json',Origin:base},body:'{"upstream_id":"test","base_url":"https://provider.example/v1"}'});
+    const discovery=await fetch(base+'/__lattice/settings/models/discover',{method:'POST',headers:{...auth,'Content-Type':'application/json',Origin:base},body:'{"upstream_id":"test","base_url":"https://provider.example/v1"}'});
     assert.equal(discovery.status,200);
     assert.ok(requests.some(r=>r.path==='/v1/settings/models/discover'&&r.method==='POST'&&r.auth==='Bearer synthetic-api-key'));
-    assert.equal((await fetch(base+'/__serein/settings/models/discover',{method:'POST',headers:{...auth,'Content-Type':'application/json',Origin:'https://foreign.invalid'},body:'{}'})).status,403);
-    assert.equal((await fetch(base+'/__serein/settings',{method:'PATCH',headers:{...auth,'Content-Type':'application/json',Origin:'https://foreign.invalid'},body:'{}'})).status,403);
-    for(const path of ['/__serein/pipeline/status','/__serein/pipeline/attempts/1']){
+    assert.equal((await fetch(base+'/__lattice/settings/models/discover',{method:'POST',headers:{...auth,'Content-Type':'application/json',Origin:'https://foreign.invalid'},body:'{}'})).status,403);
+    assert.equal((await fetch(base+'/__lattice/settings',{method:'PATCH',headers:{...auth,'Content-Type':'application/json',Origin:'https://foreign.invalid'},body:'{}'})).status,403);
+    for(const path of ['/__lattice/pipeline/status','/__lattice/pipeline/attempts/1']){
       assert.equal((await fetch(base+path,{headers:auth})).status,200);
-      assert.ok(requests.some(r=>r.path===path.replace('/__serein/','/v1/')&&r.method==='GET'));
+      assert.ok(requests.some(r=>r.path===path.replace('/__lattice/','/v1/')&&r.method==='GET'));
     }
     const postHeaders={...auth,'Content-Type':'application/json',Origin:base};
-    const thresholdTrial=await fetch(base+'/__serein/gateway/recall',{method:'POST',headers:postHeaders,
+    const thresholdTrial=await fetch(base+'/__lattice/gateway/recall',{method:'POST',headers:postHeaders,
       body:JSON.stringify({query:'Synthetic threshold trial',simulation:true,recall_mode:'full',direct_threshold:.6})});
     assert.equal(thresholdTrial.status,200);
     assert.ok(requests.some(r=>r.path==='/api/hook/recall'&&r.body?.direct_threshold===.6&&r.body?.simulation===true));
@@ -152,8 +152,8 @@ test('gateway separates web auth from API auth, saves settings and streams respo
     for(const path of ['/diaries/42','/diaries/42/comments/7']){
       assert.ok(requests.some(r=>r.path===path&&r.method==='DELETE'&&r.auth==='Bearer synthetic-api-key'));
     }
-    assert.equal((await fetch(base+'/__serein/live/diaries/42',{method:'DELETE',headers:auth})).status,403);
-    assert.equal((await fetch(base+'/__serein/live/diaries/42',{method:'DELETE',headers:{...postHeaders,Origin:'https://foreign.invalid'}})).status,403);
+    assert.equal((await fetch(base+'/__lattice/live/diaries/42',{method:'DELETE',headers:auth})).status,403);
+    assert.equal((await fetch(base+'/__lattice/live/diaries/42',{method:'DELETE',headers:{...postHeaders,Origin:'https://foreign.invalid'}})).status,403);
     const browserRequest=(path,options)=>fetch(base+path,{...options,headers:{...auth,Origin:base,...options.headers}});
     for(const action of ['archive','restore','delete']){
       const result=await runEventBatch(['event_synthetic'],action,{request:browserRequest});
@@ -161,7 +161,7 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.ok(result.completed.has('event_synthetic'));
     }
     for(const status of ['archived','active']){
-      const response=await browserRequest('/__serein/memory/set-scene-status',{
+      const response=await browserRequest('/__lattice/memory/set-scene-status',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({sceneId:'scene_synthetic',expectedUpdatedAt:'synthetic-version',status})});
       assert.equal(response.status,200);
@@ -169,29 +169,29 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.deepEqual(requests.at(-1).body,{name:'set_scene_status',arguments:{
         scene_id:'scene_synthetic',expected_updated_at:'synthetic-version',status}});
     }
-    const sceneDelete=await browserRequest('/__serein/memory/delete-scenes',{
+    const sceneDelete=await browserRequest('/__lattice/memory/delete-scenes',{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sceneIds:['scene_synthetic']})});
     assert.equal(sceneDelete.status,200);
     assert.equal((await sceneDelete.json()).deleted,1);
     assert.deepEqual(requests.at(-1).body,{bucket_ids:['scene_synthetic'],confirm:'DELETE'});
-    for(const path of ['/__serein/migration','/__serein/export/backup']){
+    for(const path of ['/__lattice/migration','/__lattice/export/backup']){
       assert.equal((await fetch(base+path)).status,401);
       const response=await fetch(base+path,{headers:auth});
       assert.equal(response.status,200);
       assert.equal(response.headers.get('cache-control'),'no-store');
-      assert.ok(requests.some(r=>r.path===path.replace('/__serein/','/v1/')&&r.auth==='Bearer synthetic-api-key'));
+      assert.ok(requests.some(r=>r.path===path.replace('/__lattice/','/v1/')&&r.auth==='Bearer synthetic-api-key'));
     }
-    const migrationPreview=await fetch(base+'/__serein/migration/preview',{method:'POST',headers:postHeaders,body:'{"content":"synthetic"}'});
+    const migrationPreview=await fetch(base+'/__lattice/migration/preview',{method:'POST',headers:postHeaders,body:'{"content":"synthetic"}'});
     assert.equal(migrationPreview.status,200);
     assert.ok(requests.some(r=>r.path==='/v1/migration/preview'&&r.method==='POST'));
-    const pathPreview=await fetch(base+'/__serein/migration/preview-path',{method:'POST',headers:postHeaders,body:JSON.stringify({path:join(dir,'buckets')})});
+    const pathPreview=await fetch(base+'/__lattice/migration/preview-path',{method:'POST',headers:postHeaders,body:JSON.stringify({path:join(dir,'buckets')})});
     assert.equal(pathPreview.status,200);
     assert.deepEqual(requests.find(r=>r.path==='/v1/migration/preview-path'&&r.body)?.body,
       {path:'/legacy/input/buckets',display_path:join(dir,'buckets')});
-    const outside=await fetch(base+'/__serein/migration/preview-path',{method:'POST',headers:postHeaders,body:JSON.stringify({path:join(tmpdir(),'outside')})});
+    const outside=await fetch(base+'/__lattice/migration/preview-path',{method:'POST',headers:postHeaders,body:JSON.stringify({path:join(tmpdir(),'outside')})});
     assert.equal(outside.status,400);
     for (const action of ['discover-theme','create-line']) {
-      const response=await fetch(base+'/__serein/narrative-'+action, {
+      const response=await fetch(base+'/__lattice/narrative-'+action, {
         method:'POST',headers:postHeaders,body:JSON.stringify({theme:'Synthetic story'}),
       });
       assert.equal(response.status,200);
@@ -199,14 +199,14 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.ok(requests.some(r=>r.path==='/api/narrative-rolls/'+action && r.method==='POST'
         && r.auth==='Bearer synthetic-api-key'));
     }
-    for(const route of ['/__serein/assistant-bridge/hook-injections','/__serein/gateway/injections']){
+    for(const route of ['/__lattice/assistant-bridge/hook-injections','/__lattice/gateway/injections']){
       const response=await fetch(base+route,{method:'POST',headers:postHeaders,body:'{"limit":5}'});
       assert.equal(response.status,200);
       const payload=await response.json();
       assert.equal(payload.status,'ok');
       assert.equal(payload.items[0].query,'A current request');
     }
-    for (const route of ['/__serein/assistant-bridge/hook-injections', '/__serein/gateway/injections']) {
+    for (const route of ['/__lattice/assistant-bridge/hook-injections', '/__lattice/gateway/injections']) {
       const response=await fetch(base+route,{method:'POST',headers:postHeaders,
         body:JSON.stringify({limit:20,afterId:0,reviewIds:[3,4]})});
       assert.equal(response.status,200);
@@ -217,7 +217,7 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.equal(forwarded.searchParams.get('review_ids'),'3,4');
     }
     for (const args of [{proposalId:'nrev_test',offset:50}, {proposalId:'nrev_test',kind:'scene',identifier:'scene_test'}]) {
-      const material = await fetch(base+'/__serein/memory/revision-materials', {
+      const material = await fetch(base+'/__lattice/memory/revision-materials', {
         method:'POST',headers:postHeaders,body:JSON.stringify(args),
       });
       assert.equal(material.status,200);
@@ -233,35 +233,35 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.equal(path.searchParams.get('offset'),String(args.offset || 0));
       if(args.identifier) assert.equal(path.searchParams.get('identifier'),args.identifier);
     }
-    const missing=await fetch(base+'/__serein/memory/revision-materials',{method:'POST',headers:postHeaders,body:JSON.stringify({proposalId:'nrev_missing'})});
+    const missing=await fetch(base+'/__lattice/memory/revision-materials',{method:'POST',headers:postHeaders,body:JSON.stringify({proposalId:'nrev_missing'})});
     assert.equal(missing.status,404);
     assert.deepEqual(await missing.json(),{status:'not_found'});
-    assert.equal((await fetch(base+'/__serein/pipeline/next',{method:'POST',headers:postHeaders,body:'{"include_recent":true}'})).status,200);
+    assert.equal((await fetch(base+'/__lattice/pipeline/next',{method:'POST',headers:postHeaders,body:'{"include_recent":true}'})).status,200);
     assert.ok(requests.some(r=>r.path==='/v1/pipeline/next'&&r.method==='POST'));
-    assert.equal((await fetch(base+'/__serein/pipeline/next',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:'{}'})).status,403);
+    assert.equal((await fetch(base+'/__lattice/pipeline/next',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:'{}'})).status,403);
     const rebuildBody={batch_id:'pipeline:synthetic',confirm:'REBUILD_PIPELINE_BATCH'};
-    assert.equal((await fetch(base+'/__serein/pipeline/rebuild',{method:'POST',headers:postHeaders,body:JSON.stringify(rebuildBody)})).status,200);
+    assert.equal((await fetch(base+'/__lattice/pipeline/rebuild',{method:'POST',headers:postHeaders,body:JSON.stringify(rebuildBody)})).status,200);
     assert.ok(requests.some(r=>r.path==='/v1/pipeline/rebuild'&&JSON.stringify(r.body)===JSON.stringify(rebuildBody)));
-    assert.equal((await fetch(base+'/__serein/pipeline/rebuild',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(rebuildBody)})).status,403);
-    assert.equal((await fetch(base+'/__serein/pipeline/rebuild',{headers:auth})).status,405);
+    assert.equal((await fetch(base+'/__lattice/pipeline/rebuild',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(rebuildBody)})).status,403);
+    assert.equal((await fetch(base+'/__lattice/pipeline/rebuild',{headers:auth})).status,405);
     const imageRetry={sha256:'a'.repeat(64)};
-    assert.equal((await fetch(base+'/__serein/pipeline/retry-image',{method:'POST',headers:postHeaders,body:JSON.stringify(imageRetry)})).status,200);
+    assert.equal((await fetch(base+'/__lattice/pipeline/retry-image',{method:'POST',headers:postHeaders,body:JSON.stringify(imageRetry)})).status,200);
     assert.ok(requests.some(r=>r.path==='/v1/pipeline/retry-image'&&JSON.stringify(r.body)===JSON.stringify(imageRetry)));
     const batchRetry={batch_id:'pipeline:synthetic'};
-    assert.equal((await fetch(base+'/__serein/pipeline/retry-batch',{method:'POST',headers:postHeaders,body:JSON.stringify(batchRetry)})).status,200);
+    assert.equal((await fetch(base+'/__lattice/pipeline/retry-batch',{method:'POST',headers:postHeaders,body:JSON.stringify(batchRetry)})).status,200);
     assert.ok(requests.some(r=>r.path==='/v1/pipeline/retry-batch'&&JSON.stringify(r.body)===JSON.stringify(batchRetry)));
-    assert.equal((await fetch(base+'/__serein/pipeline/retry-batch',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(batchRetry)})).status,403);
-    assert.equal((await fetch(base+'/__serein/pipeline/retry-image',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(imageRetry)})).status,403);
+    assert.equal((await fetch(base+'/__lattice/pipeline/retry-batch',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(batchRetry)})).status,403);
+    assert.equal((await fetch(base+'/__lattice/pipeline/retry-image',{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:JSON.stringify(imageRetry)})).status,403);
     const upload='upload%3A'+'a'.repeat(64);
     for (const action of ['summarize','skip-summary','include-in-events']) {
-      const path='/__serein/imports/'+upload+'/'+action;
+      const path='/__lattice/imports/'+upload+'/'+action;
       assert.equal((await fetch(base+path,{method:'POST',headers:postHeaders,body:'{}'})).status,200);
       assert.ok(requests.some(r=>r.path==='/v1/imports/'+upload+'/'+action&&r.method==='POST'&&r.auth==='Bearer synthetic-api-key'));
       assert.equal((await fetch(base+path,{method:'POST',headers:{...postHeaders,Origin:'https://foreign.invalid'},body:'{}'})).status,403);
       assert.equal((await fetch(base+path,{headers:auth})).status,405);
     }
 
-    for(const action of ['continue','pause'])assert.equal((await fetch(base+'/__serein/imports/'+upload+'/'+action,{method:'POST',headers:postHeaders,body:'{}'})).status,200);
+    for(const action of ['continue','pause'])assert.equal((await fetch(base+'/__lattice/imports/'+upload+'/'+action,{method:'POST',headers:postHeaders,body:'{}'})).status,200);
     assert.equal((await fetch(base+'/v1/models',{headers:auth})).status,401);
     assert.equal((await fetch(base+'/v1/models',{headers:{Authorization:'Bearer wrong'}})).status,401);
     for(const [path,method] of [['/api/hook/recall','POST'],['/v1/host/deliveries','GET'],['/v1/host/deliveries','POST']]) {
@@ -272,7 +272,7 @@ test('gateway separates web auth from API auth, saves settings and streams respo
       assert.equal(response.status,200);
       assert.ok(requests.some(r=>r.path===path&&r.method===method&&r.auth==='Bearer synthetic-api-key'));
     }
-    for (const path of ['/serein/mcp', '/serein/mcp/', '/mcp', '/mcp/']) {
+    for (const path of ['/lattice/mcp', '/lattice/mcp/', '/mcp', '/mcp/']) {
       assert.equal((await fetch(base+path,{headers:auth})).status,401);
       assert.equal((await fetch(base+path,{headers:{Authorization:'Bearer wrong'}})).status,401);
       for (const method of ['POST', 'GET', 'DELETE']) {

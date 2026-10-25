@@ -1,11 +1,11 @@
 import asyncio
 from test_live_clients import live
 from test_live_relations import create
-from serein.core.store import Store
-from serein.core.personal import Personal
-from serein.api.mcp import create_server
-from serein.application import Application
-from serein.api.surface import SELF_USE_TOOLS
+from lattice.core.store import Store
+from lattice.core.personal import Personal
+from lattice.api.mcp import create_server
+from lattice.application import Application
+from lattice.api.surface import SELF_USE_TOOLS
 
 
 def test_personal_save_reload_conflict_and_old_browser_cannot_resurrect(live):
@@ -19,7 +19,7 @@ def test_personal_save_reload_conflict_and_old_browser_cannot_resurrect(live):
     assert saved['revision']==1
     note={'scope':'annotation','key':'note-a','document_id':key,'value':{'content':'后来再读时的感受','role':'user','author':'用户'}}
     assert client.post('/api/personal',json=note).status_code==200
-    projection=client.post('/api/serein/memory-projection',json={}).json()['scenes'][0]
+    projection=client.post('/api/lattice/memory-projection',json={}).json()['scenes'][0]
     assert projection['favorite'] and projection['annotations'][0]['content']=='后来再读时的感受'
     assert Personal(settings.database).read_favorites(limit=1)['items'][0]['annotations'][0]['content']=='后来再读时的感受'
     off={**favorite,'expected_revision':1,'value':{'favorite':False}}
@@ -61,7 +61,7 @@ def test_review_and_simulation_survive_new_store_and_remain_separate(live):
 
 def test_private_mcp_catalog_and_favorite_limit(live):
     settings,client=live
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(settings.database,{'features':{'favorites':True}})
     server=create_server(Application(settings),private=True)
     tools=asyncio.run(server.list_tools())

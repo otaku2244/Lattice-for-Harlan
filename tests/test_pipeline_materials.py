@@ -2,8 +2,8 @@
 
 import pytest
 
-from serein.extensions.pipeline_materials import attach, substantive_ids
-from serein.extensions.pipeline_latest import build_event_writer_prompt
+from lattice.extensions.pipeline_materials import attach, substantive_ids
+from lattice.extensions.pipeline_latest import build_event_writer_prompt
 
 
 def test_materials_keep_ownership_and_reach_writer():

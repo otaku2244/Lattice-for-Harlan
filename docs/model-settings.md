@@ -14,7 +14,7 @@
 按旧配置模板的 `gateway.upstreams` 结构配置：添加一个上游，填写名称、API Base URL、密钥或
 `api_key_env`、协议与缓存选项，再在它下面添加多个模型。地址与密钥由该上游的全部模型共用。
 
-通过 HTTP 地址（包括局域网 IP 和公网 IP 加端口）打开 Serein 网页时，也支持添加上游、手动添加模型和导入同名模型。旧版若点击“添加上游”没有反应，升级后刷新页面重试。这项兼容指网页访问方式，上游 API Base URL 仍按模型服务提供方的要求填写。公网明文 HTTP 会使登录凭据、提交的模型密钥和页面内容面临传输泄露风险；推荐使用 HTTPS 或加密隧道，风险提示不改变这些网页操作的兼容支持。详见 [HTTP 兼容与访问风险](interactive-install.md#http-兼容与访问风险)。
+通过 HTTP 地址（包括局域网 IP 和公网 IP 加端口）打开 Lattice 网页时，也支持添加上游、手动添加模型和导入同名模型。旧版若点击“添加上游”没有反应，升级后刷新页面重试。这项兼容指网页访问方式，上游 API Base URL 仍按模型服务提供方的要求填写。公网明文 HTTP 会使登录凭据、提交的模型密钥和页面内容面临传输泄露风险；推荐使用 HTTPS 或加密隧道，风险提示不改变这些网页操作的兼容支持。详见 [HTTP 兼容与访问风险](interactive-install.md#http-兼容与访问风险)。
 模型的 `id` 是稳定的内部编号，`upstream_model` 是发送给提供方的真实模型号，`label` 是可选别名。
 客户端显示“上游名/别名”，别名留空就使用真实模型号。不同上游的同名模型由上游名区分，同一上游内需使用不同别名。旧内部编号继续支持请求路由。
 
@@ -79,36 +79,36 @@ Embedding 使用 `/embeddings`，Reranker 使用 `/rerank`；选择相应用途�
 认证等不可重试错误或耗尽次数后保留失败状态与已成功内容，不换用其他模型。关闭功能后，尚未开始的图片任务暂停。
 “眼睛”同样受 180 秒总时限限制，转录失败时返回明确错误；再次提交相同消息只补缺图。原图下载在工作线程执行，不占住异步请求循环。
 
-- Base URL：Serein 网页入口加 `/v1`，例如 `https://你的域名/v1` 或 `http://公网IP:网关端口/v1`。HTTP 公网 IP 示例仍受支持，但不提供传输加密，不建议长期这样传输私人记忆；公网使用推荐 HTTPS 或加密隧道。
+- Base URL：Lattice 网页入口加 `/v1`，例如 `https://你的域名/v1` 或 `http://公网IP:网关端口/v1`。HTTP 公网 IP 示例仍受支持，但不提供传输加密，不建议长期这样传输私人记忆；公网使用推荐 HTTPS 或加密隧道。
 - API Key：安装时生成的完整 Gateway Key，输入框不加 `Bearer` 前缀。可从安装输出、`deploy/connection-guide.txt` 或 `deploy/secrets/api-token` 读取。网页登录密码和模型厂商的 Key 都不用于这里。
 - Model：从 `GET /v1/models` 拉取聊天模型。`id` 和 `name` 均为“上游名/别名或模型号”，`owned_by` 是上游名称；向量及重排模型不在其中。
-- 在客户端添加请求头 `X-Serein-Window-ID`，值为当前会话的独立 ID；同一窗口保持不变，新建窗口换值。客户端支持会话 ID 变量时可使用它。旧客户端的 `X-Ombre-Session-Id` 也可兼容。
+- 在客户端添加请求头 `X-Lattice-Window-ID`，值为当前会话的独立 ID；同一窗口保持不变，新建窗口换值。客户端支持会话 ID 变量时可使用它。旧客户端的 `X-Ombre-Session-Id` 也可兼容。
 - 不填时回退到 `main`，聊天、记忆及已开启的会话功能仍可运行，但这些请求共用轮次、状态与召回冷却，不能识别新窗口。全局填写一个固定请求头也不能区分窗口。开窗续接需显式操作：命令方式发送 `/resume`；MCP 方式调用 `resume` 并读完全部分页。两个入口在功能设置独立开关，可同时开启，要带入的内容在侧栏“换窗”页选择。
 
-远程 MCP 的服务器 URL 填 `https://你的域名/serein/mcp`，传输类型选 **Streamable HTTP**。支持 OAuth 的客户端（包括官端自定义 MCP）把身份验证选为 **OAuth**；浏览器打开 Serein 授权页后，手动输入 Gateway Key 并确认。OAuth 需要 HTTPS 域名，同机 localhost 例外；不要把 Key 写进 URL、回调地址或客户端名称。
+远程 MCP 的服务器 URL 填 `https://你的域名/lattice/mcp`，传输类型选 **Streamable HTTP**。支持 OAuth 的客户端（包括官端自定义 MCP）把身份验证选为 **OAuth**；浏览器打开 Lattice 授权页后，手动输入 Gateway Key 并确认。OAuth 需要 HTTPS 域名，同机 localhost 例外；不要把 Key 写进 URL、回调地址或客户端名称。
 
-不支持 OAuth、但支持自定义请求头的客户端仍可使用静态方式：`Authorization: Bearer <Gateway Key>`；专门的 Bearer Token 输入框只填 Key。直接使用 `http://公网IP:网关端口/serein/mcp` 时也只能用静态方式。旧 `/mcp` 路由继续兼容。更换 Gateway Key 会同时撤销旧静态 Key 与已发放的 OAuth 凭据，需要重新授权。
+不支持 OAuth、但支持自定义请求头的客户端仍可使用静态方式：`Authorization: Bearer <Gateway Key>`；专门的 Bearer Token 输入框只填 Key。直接使用 `http://公网IP:网关端口/lattice/mcp` 时也只能用静态方式。旧 `/mcp` 路由继续兼容。更换 Gateway Key 会同时撤销旧静态 Key 与已发放的 OAuth 凭据，需要重新授权。
 
 静态 Key 只用于鉴权，不会加密 HTTP 请求；上面的公网 HTTP MCP 示例与聊天 API 有同样的凭据和内容泄露风险。安全建议不改变这些入口的兼容支持，也不放宽 OAuth 的 HTTPS 要求。公开求助时请遮挡真实实例地址、密码和 Key，具体见 [HTTP 兼容与访问风险](interactive-install.md#http-兼容与访问风险)。
 
-网页 **使用说明 → 接入** 提供公网 IP 和域名的连接地址模板。菜单 6 会更换 Key，所有客户端均需同步；查看现有 Key 无需更换。仅连接 MCP 不会让直连其他模型平台的聊天自动经过 Serein 网关。
+网页 **使用说明 → 接入** 提供公网 IP 和域名的连接地址模板。菜单 6 会更换 Key，所有客户端均需同步；查看现有 Key 无需更换。仅连接 MCP 不会让直连其他模型平台的聊天自动经过 Lattice 网关。
 
 ```json
 {
   "model": "provider-a/shared-model",
   "messages": [{"role":"user","content":"上次读书会的安排是什么？"}],
   "stream": true,
-  "serein": {"window_id":"book-club-window", "memory":true}
+  "lattice": {"window_id":"book-club-window", "memory":true}
 }
 ```
 
-`serein` 字段可省略：是否召回跟随设置页开关，窗口 ID 可通过请求头传入。
+`lattice` 字段可省略：是否召回跟随设置页开关，窗口 ID 可通过请求头传入。
 多个上游时必须指定 `model`。只有一个上游时，未指定则使用该上游的可用 `default_model` 或首个聊天模型，不会选择已指定为向量或重排的模型。
 聚合的是配置模板中列出的模型，不自动请求服务商账户的完整模型目录。
 普通回复、流式文本、工具调用和 usage 会转发。Operit 外部注入块先与真正用户话语分开处理。
 召回先形成 Scene/Event 混合池：前六条向量结果作为宽探针，符合扩展条件的较后结果可进入，直接候选最多二十条；开启联想后最多加一条已确认关系相连的 Scene，共用重排。最终阈值默认 0.65，最多两卡，选卡后冷却不补位。见 [召回说明](recall.md)。
 
-响应头 `X-Serein-Selected-Ids` 表示本次提供给上游的选卡，不能仅凭响应头认定请求成功。
+响应头 `X-Lattice-Selected-Ids` 表示本次提供给上游的选卡，不能仅凭响应头认定请求成功。
 成功结果的 receipt 可在 `/v1/host/deliveries` 查询，`delivery_target=upstream_model`；它不代表用户读过回复。
 工具续轮复用注入前缀；失败或未完成的流不写成功 receipt。详见 [聊天网关](chat-gateway.md)。
 
@@ -157,8 +157,8 @@ Embedding 使用 `/embeddings`，Reranker 使用 `/rerank`；选择相应用途�
 本地管理员也可使用：
 
 ```sh
-serein --config config.toml index-status
-serein --config config.toml resume-index --recovery-token <当前状态令牌> --confirm RESUME_INDEX_EMBEDDING
+lattice --config config.toml index-status
+lattice --config config.toml resume-index --recovery-token <当前状态令牌> --confirm RESUME_INDEX_EMBEDDING
 ```
 
 HTTP 对应已鉴权的 GET `/v1/settings/index-status` 与 POST `/v1/settings/resume-index`；恢复要求 writable 部署、`confirm: RESUME_INDEX_EMBEDDING` 和当前 `recovery_token`。错误记录不保存响应正文、URL、密钥或输入内容。此保护不能撤销已经计费的请求，也不能保证请求成功后、落库前崩溃时提供方的恰好一次处理；人工恢复可能重发该批次。多个进程必须共享同一数据库路径和本地文件锁语义，不支持跨主机或不可靠的网络文件锁。

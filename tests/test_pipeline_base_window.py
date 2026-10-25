@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from serein.api.settings import PipelinePatch
-from serein.extensions import pipeline
+from lattice.api.settings import PipelinePatch
+from lattice.extensions import pipeline
 
 
 @pytest.fixture

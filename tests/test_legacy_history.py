@@ -3,15 +3,15 @@ import sqlite3
 
 import pytest
 
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.notebook import read_entry, resolve_entry
-from serein.core.store import Store, encode
-from serein.compat.diaries import Diaries
-from serein.compat.germany.diary_store import DiaryStore
-from serein.legacy_migration.history import scan_history, import_history, run_history_repair
-from serein.legacy_migration.scan import scan
-from serein.legacy_migration.workflow import Migration
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.notebook import read_entry, resolve_entry
+from lattice.core.store import Store, encode
+from lattice.compat.diaries import Diaries
+from lattice.compat.germany.diary_store import DiaryStore
+from lattice.legacy_migration.history import scan_history, import_history, run_history_repair
+from lattice.legacy_migration.scan import scan
+from lattice.legacy_migration.workflow import Migration
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def history_source(tmp_path):
 
 @pytest.fixture
 def target(tmp_path):
-    settings = Settings(tmp_path / 'new/serein.db', writable=True)
+    settings = Settings(tmp_path / 'new/lattice.db', writable=True)
     initialize(settings)
     return settings
 
@@ -222,8 +222,8 @@ def test_paths_outside_backup_are_not_read(tmp_path):
 
 
 def test_cli_history_repair_requires_unchanged_preview_and_no_models(history_source,target,monkeypatch,capsys):
-    from serein.legacy_migration.__main__ import main
-    monkeypatch.setattr('serein.legacy_migration.__main__.load_settings',lambda path:target)
+    from lattice.legacy_migration.__main__ import main
+    monkeypatch.setattr('lattice.legacy_migration.__main__.load_settings',lambda path:target)
     args=['migration','--config','unused','repair-history',str(history_source)]
     monkeypatch.setattr('sys.argv',args)
     main()
@@ -239,8 +239,8 @@ def test_cli_history_repair_requires_unchanged_preview_and_no_models(history_sou
 
 
 def test_web_workflow_imports_history_before_model_stages(history_source, target, monkeypatch):
-    from serein.legacy_migration.web import preview_path, location, run
-    from serein.legacy_migration.workflow import Migration
+    from lattice.legacy_migration.web import preview_path, location, run
+    from lattice.legacy_migration.workflow import Migration
     preview = preview_path(target, str(history_source))
     (location(target,preview['id'])/'options.json').write_text(encode({'user_name':'User','ai_name':'AI','aliases':[]}), 'utf-8')
     monkeypatch.setattr(Migration, 'freeze_configuration', lambda self: None)
@@ -252,7 +252,7 @@ def test_web_workflow_imports_history_before_model_stages(history_source, target
         return {'cues':{}}
     monkeypatch.setattr(Migration, 'tag_all', tag)
     monkeypatch.setattr(Migration, 'edges', edges)
-    monkeypatch.setattr('serein.configured_models.prepare_selected', lambda *a,**kw: {})
-    monkeypatch.setattr('serein.configured_models.effective_settings', lambda s:s)
-    monkeypatch.setattr('serein.recall.legacy_indexes.refresh', refresh)
+    monkeypatch.setattr('lattice.configured_models.prepare_selected', lambda *a,**kw: {})
+    monkeypatch.setattr('lattice.configured_models.effective_settings', lambda s:s)
+    monkeypatch.setattr('lattice.recall.legacy_indexes.refresh', refresh)
     assert run(target,preview['id'])['status'] == 'completed'

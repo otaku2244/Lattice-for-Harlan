@@ -1,11 +1,11 @@
 import asyncio
 
-from serein.arc_linking import candidate_arcs, enqueue, initialize, process
-from serein.bootstrap import initialize as bootstrap
-from serein.compat.events import Events
-from serein.compat.narratives import narrative_transaction
-from serein.config import Settings
-from serein.core.store import Store
+from lattice.arc_linking import candidate_arcs, enqueue, initialize, process
+from lattice.bootstrap import initialize as bootstrap
+from lattice.compat.events import Events
+from lattice.compat.narratives import narrative_transaction
+from lattice.config import Settings
+from lattice.core.store import Store
 
 
 def setup(tmp_path):
@@ -15,7 +15,7 @@ def setup(tmp_path):
         result=rolls.publish(narrative_id='narrative_garden',expected_revision=0,title='雨夜花园',
             document='# 雨夜花园\n\n## 第一人称叙事\n\n- diary:1\n- diary:2\n',
             source_diary_ids=[1,2],publication_status='collecting',
-            arc_key='arc:rain-garden',query_cues=['花园','雨夜'],primary_entities=['Serein'])
+            arc_key='arc:rain-garden',query_cues=['花园','雨夜'],primary_entities=['Lattice'])
         assert result['status']=='created'
     result=Events(settings.database).write_many([{'type':'event','title':'花园流程图完成',
         'body':'我们把雨夜花园的公开流程图画完了。','origin_id':'assistant_bridge:arc-test','recallable':True,

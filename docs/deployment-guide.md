@@ -1,19 +1,19 @@
-# Serein 部署指南与常用命令
+# Lattice 部署指南与常用命令
 
 更新日期：2026-10-03。适用于 [Yinglianchun/Serein](https://github.com/Yinglianchun/Serein) 当前一键脚本，覆盖 Linux／VPS、Windows 和安卓 Termux。
 
-这份指南从拿到代码、第一次安装写到客户端连接和日常维护。已经装好但遇到问题，请直接看 [Serein 排错指南](troubleshooting.md)。更详细的迁移规则与安装实现见 [交互安装说明](interactive-install.md)。
+这份指南从拿到代码、第一次安装写到客户端连接和日常维护。已经装好但遇到问题，请直接看 [Lattice 排错指南](troubleshooting.md)。更详细的迁移规则与安装实现见 [交互安装说明](interactive-install.md)。
 
 Zeabur 用户可参考 [Zeabur 手动部署说明](deploy-zeabur.md)。该路线按当前源码整理，尚未在 Zeabur 实测，不属于一键脚本覆盖范围。
 
 ## 先看这六步
 
-1. 准备运行环境，下载或克隆 Serein，进入安装目录。
+1. 准备运行环境，下载或克隆 Lattice，进入安装目录。
 2. Windows 运行 `scripts/one_click.ps1`；Linux／Termux 运行 `bash scripts/one_click.sh`。
 3. 主菜单选 **1**，选部署环境，再选全新安装或从旧 Ombre 迁移。
 4. 保存页面账号和脚本生成的 Gateway Key，等待安装与启动完成。
 5. 打开网页，在 **设置 → 模型／配置** 接入模型，建立检索索引，再开启需要的功能。
-6. 聊天客户端填写脚本给出的地址加 `/v1` 和 Gateway Key；MCP 使用同一入口加 `/serein/mcp`。
+6. 聊天客户端填写脚本给出的地址加 `/v1` 和 Gateway Key；MCP 使用同一入口加 `/lattice/mcp`。
 
 **安装成功不等于模型已经配置好；网页能打开不等于自动召回已经就绪。** 一键脚本处理安装和维护，你仍需要填写自己的模型服务与客户端配置。
 
@@ -34,7 +34,7 @@ Windows Docker Desktop 冷安装与 Termux 真机长期运行兼容性尚未确�
 
 ## 2 准备安装目录
 
-代码放在不会被系统清理的目录，例如 Linux 的 `~/Serein`、VPS 的 `/opt/Serein` 或 Windows 的 `D:\Serein`。不要放在 `/tmp`。下面命令里的路径是示例，可以换成自己的。
+代码放在不会被系统清理的目录，例如 Linux 的 `~/Lattice`、VPS 的 `/opt/Lattice` 或 Windows 的 `D:\Lattice`。不要放在 `/tmp`。下面命令里的路径是示例，可以换成自己的。
 
 已经下载并解压发行包的用户，直接进入解压后的目录，不必再次克隆。安装目录里应有 `release-files.json`、`scripts`、`src`、`web` 和 `deploy`。
 
@@ -43,20 +43,20 @@ Windows Docker Desktop 冷安装与 Termux 真机长期运行兼容性尚未确�
 准备好 Git、Python 和所选运行环境后执行：
 
 ```sh
-git clone https://github.com/Yinglianchun/Serein.git ~/Serein
-cd ~/Serein
+git clone https://github.com/Yinglianchun/Serein.git ~/Lattice
+cd ~/Lattice
 bash scripts/one_click.sh
 ```
 
-VPS 上如使用 `/opt/Serein`，需要当前账号对该目录有写入权限。云服务器 SSH 连不上时，先看 [SSH 排错](troubleshooting.md#ssh-连接超时或被拒绝)。
+VPS 上如使用 `/opt/Lattice`，需要当前账号对该目录有写入权限。云服务器 SSH 连不上时，先看 [SSH 排错](troubleshooting.md#ssh-连接超时或被拒绝)。
 
 ### Windows PowerShell
 
 先安装 Git、Python，以及 Docker Desktop 或直跑用的 Node。打开新 PowerShell，执行：
 
 ```powershell
-git clone https://github.com/Yinglianchun/Serein.git D:\Serein
-cd D:\Serein
+git clone https://github.com/Yinglianchun/Serein.git D:\Lattice
+cd D:\Lattice
 powershell -ExecutionPolicy Bypass -File .\scripts\one_click.ps1
 ```
 
@@ -69,8 +69,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\one_click.ps1
 ```sh
 pkg update
 pkg install python nodejs-lts git clang make rust pkg-config
-git clone https://github.com/Yinglianchun/Serein.git ~/Serein
-cd ~/Serein
+git clone https://github.com/Yinglianchun/Serein.git ~/Lattice
+cd ~/Lattice
 bash scripts/one_click.sh
 ```
 
@@ -78,7 +78,7 @@ bash scripts/one_click.sh
 
 ## 3 第一次运行一键脚本
 
-主菜单选 **1 · 安装 Serein**，按实际环境选择：
+主菜单选 **1 · 安装 Lattice**，按实际环境选择：
 
 - **1**：Linux／VPS Docker Compose。
 - **2**：Windows Docker Desktop。
@@ -96,7 +96,7 @@ bash scripts/one_click.sh
 | 手机连电脑／其他设备直连 | `0.0.0.0` | 安装机器可访问的 IP 或域名 |
 | nginx HTTPS 反代 | 网关通常保持 `127.0.0.1` | HTTPS 域名 |
 
-`0.0.0.0` 是监听设置，不是客户端地址。手机里的 `127.0.0.1` 指手机自己，不是运行 Serein 的电脑。
+`0.0.0.0` 是监听设置，不是客户端地址。手机里的 `127.0.0.1` 指手机自己，不是运行 Lattice 的电脑。
 
 首次构建需要下载镜像或依赖，可能耗时较长。小内存机器先停止同机旧服务，给构建留出资源。脚本只管理当前实例，不会替你在构建前停止所有旧服务。
 
@@ -128,16 +128,16 @@ bash scripts/one_click.sh
 | --- | --- | --- |
 | 网页 | `http://127.0.0.1:18217` | 页面用户名和密码 |
 | OpenAI 兼容聊天 | `http://127.0.0.1:18217/v1` | API Key 填完整 Gateway Key，不加 `Bearer` |
-| MCP | `http://127.0.0.1:18217/serein/mcp` | Streamable HTTP；静态鉴权请求头为 `Authorization: Bearer <Gateway Key>` |
-| HTTPS MCP OAuth | `https://memory.example.com/serein/mcp` | 选择 OAuth，Serein 授权页输入 Gateway Key |
+| MCP | `http://127.0.0.1:18217/lattice/mcp` | Streamable HTTP；静态鉴权请求头为 `Authorization: Bearer <Gateway Key>` |
+| HTTPS MCP OAuth | `https://memory.example.com/lattice/mcp` | 选择 OAuth，Lattice 授权页输入 Gateway Key |
 
-**页面密码、Gateway Key、模型提供方 API Key 是三种不同凭据。** 模型提供方密钥填网页“模型”设置；不要把它填成聊天客户端访问 Serein 的 Key。
+**页面密码、Gateway Key、模型提供方 API Key 是三种不同凭据。** 模型提供方密钥填网页“模型”设置；不要把它填成聊天客户端访问 Lattice 的 Key。
 
-聊天客户端拉取模型列表后选择实际显示的“上游名／模型别名”。通常 Base URL 填到 `/v1`，具体接口地址由客户端追加；不要误把 `/serein/mcp` 填进聊天地址。不要照抄旧 Ombre 的 `/v1/messages` 接法；当前 Serein 网关的聊天入口是 OpenAI 兼容 `/v1/chat/completions`。
+聊天客户端拉取模型列表后选择实际显示的“上游名／模型别名”。通常 Base URL 填到 `/v1`，具体接口地址由客户端追加；不要误把 `/lattice/mcp` 填进聊天地址。不要照抄旧 Ombre 的 `/v1/messages` 接法；当前 Lattice 网关的聊天入口是 OpenAI 兼容 `/v1/chat/completions`。
 
-同一聊天会话保持稳定的 `X-Serein-Window-ID`，例如 `chat-001`；新窗口换成新值。不填时使用默认会话 `main`，共用提醒轮次和召回冷却，不能自动区分窗口。
+同一聊天会话保持稳定的 `X-Lattice-Window-ID`，例如 `chat-001`；新窗口换成新值。不填时使用默认会话 `main`，共用提醒轮次和召回冷却，不能自动区分窗口。
 
-聊天经过 Serein 网关才由网关自动带入记忆。只连接 MCP 时，客户端模型需要主动调用工具；两种接入并不等价。开启开窗续接后，经过网关的聊天可发送 `/resume`，也可用 MCP 的 `resume`；两个入口可独立开启或同时开启。已通过指令加载本轮资料时，无须再次调用工具。
+聊天经过 Lattice 网关才由网关自动带入记忆。只连接 MCP 时，客户端模型需要主动调用工具；两种接入并不等价。开启开窗续接后，经过网关的聊天可发送 `/resume`，也可用 MCP 的 `resume`；两个入口可独立开启或同时开启。已通过指令加载本轮资料时，无须再次调用工具。
 
 ## 6 手机访问与 HTTPS 入口
 
@@ -153,11 +153,11 @@ IP 直连使用菜单 5 的 IP 入口，并允许实际网关端口通过云安�
 
 菜单 **5 → 2 · HTTPS 域名** 是接入现有 nginx 和证书的功能：需要 Linux root、已安装 nginx、域名解析到本机和已有证书。它不负责买域名、签发证书或自动开放云安全组。入口有冲突或首页已经在用时可能拒绝覆盖，先按提示处理。
 
-HTTPS 完成后，网页用 `https://memory.example.com`，聊天用该地址加 `/v1`，MCP 加 `/serein/mcp`。OAuth 使用 HTTPS 域名或本机 localhost；公网 IP 的 HTTP 入口使用支持静态请求头鉴权的 MCP 客户端。
+HTTPS 完成后，网页用 `https://memory.example.com`，聊天用该地址加 `/v1`，MCP 加 `/lattice/mcp`。OAuth 使用 HTTPS 域名或本机 localhost；公网 IP 的 HTTP 入口使用支持静态请求头鉴权的 MCP 客户端。
 
 ## 7 日常维护菜单
 
-首次运行启动脚本会尝试注册短命令 `se`。以后先进入对应 Serein 安装目录，再输入 `se`；快捷命令按当前目录选择实例。找不到 `se` 时重开终端，或继续使用原启动脚本。
+首次运行启动脚本会尝试注册短命令 `se`。以后先进入对应 Lattice 安装目录，再输入 `se`；快捷命令按当前目录选择实例。找不到 `se` 时重开终端，或继续使用原启动脚本。
 
 | 菜单 | 用途 | 注意 |
 | --- | --- | --- |
@@ -180,7 +180,7 @@ HTTPS 完成后，网页用 `https://memory.example.com`，聊天用该地址加
 ### 更新已有实例
 
 ```sh
-cd ~/Serein
+cd ~/Lattice
 se
 ```
 
@@ -194,7 +194,7 @@ se
 
 | 路径 | 内容 |
 | --- | --- |
-| `deploy/runtime/serein.db` | 主数据库，包含记忆和实例设置等 |
+| `deploy/runtime/lattice.db` | 主数据库，包含记忆和实例设置等 |
 | `deploy/runtime/` | 图片、派生索引、迁移报告、直跑日志等实例数据 |
 | `deploy/secrets/api-token` | Gateway Key |
 | `deploy/secrets/web-auth.json` | 页面账号与密码哈希 |

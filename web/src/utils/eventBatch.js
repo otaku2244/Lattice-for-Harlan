@@ -17,7 +17,7 @@ export async function runEventBatch(ids, action, { request = fetch, onProgress =
   for (const itemId of targets) {
     if (completed.has(itemId)) continue;
     try {
-      const response = await request(`/__serein/memory/${operation.path}`, {
+      const response = await request(`/__lattice/memory/${operation.path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, ...operation.body }),

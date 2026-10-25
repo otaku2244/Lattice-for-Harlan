@@ -1,8 +1,8 @@
 # Codex 换窗包接入示例（自建前后端）
 
-这份示例面向自己维护聊天前端、后端和会话映射的 Serein 使用者。目标是在用户主动换窗时，由后端读取 Serein 已选定的续接资料，新建一个 Codex thread，并在第一条真实新消息之前预装最新窗影、Scene、Event 和原话。
+这份示例面向自己维护聊天前端、后端和会话映射的 Lattice 使用者。目标是在用户主动换窗时，由后端读取 Lattice 已选定的续接资料，新建一个 Codex thread，并在第一条真实新消息之前预装最新窗影、Scene、Event 和原话。
 
-“换窗包”是本文对这组 Serein 连续性材料的称呼，不是 Codex 的官方功能名。Codex 侧使用官方 App Server 的 `thread/start` 和 `thread/inject_items`。示例不会让 Serein 网页直接控制 Codex，也不会读取、覆盖或伪造 Codex 的会话 JSONL 文件。
+“换窗包”是本文对这组 Lattice 连续性材料的称呼，不是 Codex 的官方功能名。Codex 侧使用官方 App Server 的 `thread/start` 和 `thread/inject_items`。示例不会让 Lattice 网页直接控制 Codex，也不会读取、覆盖或伪造 Codex 的会话 JSONL 文件。
 
 可运行代码与虚构数据位于 [`examples/codex-continuity-packet/`](../examples/codex-continuity-packet/README.md)。Codex 协议本身以 [Codex App Server 官方文档](https://developers.openai.com/codex/app-server) 和当前安装版本生成的 schema 为准。
 
@@ -16,22 +16,22 @@
 
 Gateway Key 和 Codex 进程都留在后端，不要放进浏览器。若任何一步失败，保留旧窗口为活动窗口。
 
-## Serein 材料怎样进入 Codex
+## Lattice 材料怎样进入 Codex
 
-| Serein `kind` | Codex history role | 保留的身份 |
+| Lattice `kind` | Codex history role | 保留的身份 |
 | --- | --- | --- |
 | `shadow` | `developer` | `id`、标题、正文、revision |
 | `scene` | `developer` | Scene `id`、标题、正文、revision |
 | `event` | `developer` | Event `id`、标题、正文、revision |
 | `raw` | 原来的 `user` / `assistant` | 原文 `id`、`source_message_id`、来源、会话、时间和未改写正文 |
 
-每条原文至少保留响应中的 `id`，例如 `raw:42`。它是这个 Serein 实例中可交给 `source_message_read` 精确读回的原文 ID。`source_message_id` 是导入来源提供的上游消息 ID，用于追溯来源；两者不要互相替代，也不要只保留正文。
+每条原文至少保留响应中的 `id`，例如 `raw:42`。它是这个 Lattice 实例中可交给 `source_message_read` 精确读回的原文 ID。`source_message_id` 是导入来源提供的上游消息 ID，用于追溯来源；两者不要互相替代，也不要只保留正文。
 
 这些 ID 无法作为 Codex message 的独立字段发送，所以示例把它们写在原文前的清晰元数据行中，同时保持原文原来的 role 和正文。结构化材料前还会加入一条 developer 边界，说明后续内容是历史资料、不是当前指令，当前用户消息优先。
 
 ## 读取续接资料
 
-先在 Serein 的“设置 → 功能”开启开窗续接并选择要带入的区块。后端调用：
+先在 Lattice 的“设置 → 功能”开启开窗续接并选择要带入的区块。后端调用：
 
 ```http
 POST /v1/extensions/resume
@@ -44,7 +44,7 @@ Content-Type: application/json
 }
 ```
 
-`source_session_id` 用来把“最近原话”或“尚未整理的原话”限定到来源会话；没有这个边界时不要随意把整个实例的近期原话带入某个用户窗口。响应中的 `injected: false` 表示 Serein 只准备了资料，尚未替你的宿主注入 Codex。
+`source_session_id` 用来把“最近原话”或“尚未整理的原话”限定到来源会话；没有这个边界时不要随意把整个实例的近期原话带入某个用户窗口。响应中的 `injected: false` 表示 Lattice 只准备了资料，尚未替你的宿主注入 Codex。
 
 当 `has_more` 为 `true` 时，用同样的参数加上返回的 `next_cursor` 继续请求。必须读完全部页面；不要把“拿到第一页”当作换窗包完整。示例会按 `body_offset` 合并被分页切开的长正文，并要求同一次读取的 `collection_id` 保持一致。
 

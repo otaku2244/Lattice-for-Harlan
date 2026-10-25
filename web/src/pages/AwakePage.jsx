@@ -64,7 +64,7 @@ export function AwakePage({
   const [dreams, setDreams] = useState([]);
   const [dreamsStatus, setDreamsStatus] = useState("loading");
   const [selectedDreamId, setSelectedDreamId] = useState(null);
-  const [meetingDate, setMeetingDate] = useState(() => readLocalPreference("serein.awake.meetingDate", ""));
+  const [meetingDate, setMeetingDate] = useState(() => readLocalPreference("lattice.awake.meetingDate", ""));
   const [meetingDateDraft, setMeetingDateDraft] = useState(meetingDate);
   const [meetingDateBusy, setMeetingDateBusy] = useState(false);
   const [meetingDateStatus, setMeetingDateStatus] = useState("");
@@ -101,31 +101,31 @@ export function AwakePage({
     finally { setMeetingDateBusy(false); }
   };
   const [coverSettings, setCoverSettings] = useState(() => ({
-    tagline: readLocalPreference("serein.awake.tagline", defaultCoverSettings.tagline),
+    tagline: readLocalPreference("lattice.awake.tagline", defaultCoverSettings.tagline),
     fadeStart: Math.min(82, Math.max(48, Number(
-      readLocalPreference("serein.awake.fadeStart", defaultCoverSettings.fadeStart),
+      readLocalPreference("lattice.awake.fadeStart", defaultCoverSettings.fadeStart),
     ) || defaultCoverSettings.fadeStart)),
     portraitHazeEnabled:
-      readLocalPreference("serein.awake.portraitHaze", defaultCoverSettings.portraitHazeEnabled ? "on" : "off") !== "off",
+      readLocalPreference("lattice.awake.portraitHaze", defaultCoverSettings.portraitHazeEnabled ? "on" : "off") !== "off",
     compositionEnabled:
-      readLocalPreference("serein.awake.composition", defaultCoverSettings.compositionEnabled ? "on" : "off") !== "off",
+      readLocalPreference("lattice.awake.composition", defaultCoverSettings.compositionEnabled ? "on" : "off") !== "off",
   }));
   const [identityNames, setIdentityNames] = useState(() => ({
-    user: readLocalPreference("serein.awake.name.user", people[0].name),
-    assistant: readLocalPreference("serein.awake.name.assistant", people[1].name),
+    user: readLocalPreference("lattice.awake.name.user", people[0].name),
+    assistant: readLocalPreference("lattice.awake.name.assistant", people[1].name),
   }));
   const [identityStatus, setIdentityStatus] = useState("");
   const [identityBusy, setIdentityBusy] = useState(false);
   useEffect(() => {
     let active = true;
     const featuresChanged = event => {setShadowsEnabled(!!event.detail?.window_shadows);if(!event.detail?.window_shadows)setShadowReaderOpen(false);};
-    window.addEventListener('serein:features',featuresChanged);
+    window.addEventListener('lattice:features',featuresChanged);
     instanceSettings().then(({ identity,features }) => {
       if (active) setIdentityNames({ user: identity.user_name, assistant: identity.ai_name });
       if (active) { setMeetingDate(identity.meeting_date ?? ""); setMeetingDateDraft(identity.meeting_date ?? ""); }
       if (active) setShadowsEnabled(!!features?.window_shadows);
     }).catch(error => { if (active) setIdentityStatus(error.message); });
-    return () => { active = false;window.removeEventListener('serein:features',featuresChanged); };
+    return () => { active = false;window.removeEventListener('lattice:features',featuresChanged); };
   }, []);
   const saveIdentity = async () => {
     if (!identityNames.user.trim() || !identityNames.assistant.trim()) {
@@ -581,7 +581,7 @@ export function AwakePage({
           <div className="content-view">
             <header className="content-header reveal">
               <div>
-                <span className="content-header__date">Serein</span>
+                <span className="content-header__date">Lattice</span>
                 <h2>醒来</h2>
               </div>
               <p>做了什么梦呢</p>

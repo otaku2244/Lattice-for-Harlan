@@ -37,7 +37,7 @@ def test_menu_one_updates_existing_instance_and_keeps_first_install(tmp_path,mon
     monkeypatch.setattr(module.importlib.util,'spec_from_file_location',spec_for)
     module.main()
     assert calls==(['update'] if installed else ['environment','tools','install'])
-    assert menus[0]['1']==('拉取上游代码并重建' if installed else '安装 Serein（全新安装／旧库迁移）')
+    assert menus[0]['1']==('拉取上游代码并重建' if installed else '安装 Lattice（全新安装／旧库迁移）')
     assert menus[0]['11']=='旧 Scene 补 cues'
     assert not any('本地源码' in label for label in menus[0].values())
 
@@ -120,18 +120,18 @@ def test_nginx_validation_failure_restores_exact_configuration(tmp_path):
 def test_public_ip_access_updates_only_gateway_and_preserves_credentials(tmp_path,monkeypatch):
     module=manager();deploy=tmp_path/'deploy';(deploy/'secrets').mkdir(parents=True)
     for name in ('web-auth.json','api-token'):(deploy/'secrets'/name).write_text('existing secret')
-    (deploy/'.env').write_text('SEREIN_BIND=127.0.0.1\nSEREIN_PORT=19217\n')
+    (deploy/'.env').write_text('LATTICE_BIND=127.0.0.1\nLATTICE_PORT=19217\n')
     (deploy/'installation.json').write_text('{"backend":"docker","compose_project":"test-instance","client_host":"127.0.0.1"}')
     monkeypatch.setattr(module,'DEPLOY',deploy);answers=iter(['1','203.0.113.10'])
     monkeypatch.setattr(module,'ask',lambda *args:next(answers));monkeypatch.setattr(module,'confirm',lambda *args:True)
     calls=[];monkeypatch.setattr(module,'compose',lambda *args:calls.append(args))
     module.access()
     assert module.url()=='http://203.0.113.10:19217'
-    assert module.read_env()['SEREIN_BIND']=='0.0.0.0'
+    assert module.read_env()['LATTICE_BIND']=='0.0.0.0'
     assert calls==[('up','-d','--no-deps','--wait','gateway')]
     assert all(p.read_text()=='existing secret' for p in (deploy/'secrets').iterdir())
     assert module.installation()['compose_project']=='test-instance'
-    assert 'X-Serein-Window-ID' in (deploy/'connection-guide.txt').read_text('utf-8')
+    assert 'X-Lattice-Window-ID' in (deploy/'connection-guide.txt').read_text('utf-8')
 
 
 def test_public_access_failed_start_restores_bind_and_client(tmp_path,monkeypatch):
@@ -139,7 +139,7 @@ def test_public_access_failed_start_restores_bind_and_client(tmp_path,monkeypatc
     import pytest
     module=manager();deploy=tmp_path/'deploy';(deploy/'secrets').mkdir(parents=True)
     for name in ('web-auth.json','api-token'):(deploy/'secrets'/name).write_text('existing secret')
-    (deploy/'.env').write_text('SEREIN_BIND=127.0.0.1\nSEREIN_PORT=19217\n')
+    (deploy/'.env').write_text('LATTICE_BIND=127.0.0.1\nLATTICE_PORT=19217\n')
     before='{"backend":"docker","client_host":"127.0.0.1"}'
     (deploy/'installation.json').write_text(before)
     monkeypatch.setattr(module,'DEPLOY',deploy);answers=iter(['1','203.0.113.10'])
@@ -150,7 +150,7 @@ def test_public_access_failed_start_restores_bind_and_client(tmp_path,monkeypatc
         if len(calls)==1:raise subprocess.CalledProcessError(1,['docker'])
     monkeypatch.setattr(module,'compose',compose)
     with pytest.raises(subprocess.CalledProcessError):module.access()
-    assert module.read_env()['SEREIN_BIND']=='127.0.0.1'
+    assert module.read_env()['LATTICE_BIND']=='127.0.0.1'
     assert (deploy/'installation.json').read_text()==before
     assert len(calls)==2
 
@@ -215,7 +215,7 @@ def test_docker_build_does_not_continue_after_stop_or_build_failure(monkeypatch)
 @pytest.mark.parametrize('selection,expected',[('',True),('0',False),('r',None)])
 def test_update_backup_choice_defaults_to_backup_and_can_cancel(tmp_path,monkeypatch,selection,expected):
     module=manager();deploy=tmp_path/'deploy';(deploy/'runtime').mkdir(parents=True)
-    (deploy/'runtime'/'serein.db').write_bytes(b'synthetic')
+    (deploy/'runtime'/'lattice.db').write_bytes(b'synthetic')
     (deploy/'secrets').mkdir();(deploy/'secrets'/'api-token').write_text('synthetic')
     answers=iter(['1',selection]);calls=[]
     monkeypatch.setattr('builtins.input',lambda *a:next(answers))
@@ -253,7 +253,7 @@ def test_optional_backup_keeps_stop_before_build_order(tmp_path,monkeypatch,kind
 def test_upgrade_backup_contains_data_and_credentials_without_recursing_backups(tmp_path,monkeypatch):
     import tarfile
     module=manager();deploy=tmp_path/'deploy'
-    (deploy/'runtime').mkdir(parents=True);(deploy/'runtime'/'serein.db').write_bytes(b'synthetic-db')
+    (deploy/'runtime').mkdir(parents=True);(deploy/'runtime'/'lattice.db').write_bytes(b'synthetic-db')
     (deploy/'secrets').mkdir();(deploy/'secrets'/'api-token').write_text('synthetic-secret')
     (deploy/'config.toml').write_text('synthetic config')
     monkeypatch.setattr(module,'DEPLOY',deploy)
@@ -261,7 +261,7 @@ def test_upgrade_backup_contains_data_and_credentials_without_recursing_backups(
     backups=list((deploy/'backups').glob('*.tar.gz'));assert len(backups)==2
     for backup in backups:
         with tarfile.open(backup) as archive:
-            assert archive.extractfile('runtime/serein.db').read()==b'synthetic-db'
+            assert archive.extractfile('runtime/lattice.db').read()==b'synthetic-db'
             assert archive.extractfile('secrets/api-token').read()==b'synthetic-secret'
             assert not any('backups' in name for name in archive.getnames())
 
@@ -287,7 +287,7 @@ def test_auth_stores_only_salted_hash_and_prepare_preserves_existing_data(tmp_pa
     assert (deploy/'runtime'/'sentinel').read_text()=='preserve'
     assert (deploy/'secrets'/'api-token').read_bytes()==before
     assert 'a-long-test-password' not in capsys.readouterr().out
-    assert '/data/serein.db' in (deploy/'config.toml').read_text()
+    assert '/data/lattice.db' in (deploy/'config.toml').read_text()
 
 
 def test_invalid_choice_and_confirmation_retry_without_running_actions(monkeypatch):
@@ -325,7 +325,7 @@ def test_local_prepare_uses_own_paths_preserves_secrets_and_retries_duplicate_po
     module.prepare()
     assert (deploy/'secrets'/'api-token').read_bytes()==before
     assert (deploy/'runtime'/'sentinel').read_text()=='preserve'
-    assert '"./runtime/serein.db"' in (deploy/'config.toml').read_text()
+    assert '"./runtime/lattice.db"' in (deploy/'config.toml').read_text()
     assert module.url()=='http://127.0.0.1:19200'
     record=module.installation()
     assert (record['memory_port'],record['preview_port'])==(19201,19202)
@@ -388,20 +388,20 @@ def test_fresh_docker_directories_have_different_projects_and_old_config_stays_c
     module.select_environment()
     calls=[];monkeypatch.setattr(module,'run',lambda args,**kw:calls.append(args))
     module.compose('ps')
-    assert calls[0][3]=='serein-public'
+    assert calls[0][3]=='lattice-public'
 
 
 def test_rotate_gateway_key_updates_guide_and_restarts_both_services(tmp_path,monkeypatch,capsys):
     module=manager();deploy=tmp_path/'deploy';(deploy/'secrets').mkdir(parents=True)
     (deploy/'secrets/api-token').write_text('old-key');(deploy/'secrets/web-auth.json').write_text('page-auth')
-    (deploy/'.env').write_text('SEREIN_PORT=19217\n')
+    (deploy/'.env').write_text('LATTICE_PORT=19217\n')
     monkeypatch.setattr(module,'DEPLOY',deploy)
     monkeypatch.setattr(module,'confirm',lambda *args:True)
     calls=[];monkeypatch.setattr(module,'service_action',lambda *args:calls.append(args))
     module.rotate_key()
     key=(deploy/'secrets/api-token').read_text();assert len(key)>=40 and key!='old-key'
     assert key in (deploy/'connection-guide.txt').read_text('utf-8') and key in capsys.readouterr().out
-    assert 'http://127.0.0.1:19217/serein/mcp' in (deploy/'connection-guide.txt').read_text('utf-8')
+    assert 'http://127.0.0.1:19217/lattice/mcp' in (deploy/'connection-guide.txt').read_text('utf-8')
     assert calls==[('restart',)] and (deploy/'secrets/web-auth.json').read_text()=='page-auth'
     monkeypatch.setattr(module,'confirm',lambda *args:False);module.rotate_key()
     assert (deploy/'secrets/api-token').read_text()==key and len(calls)==1
@@ -431,7 +431,7 @@ def test_menu_rotate_key_without_env_still_shows_key(tmp_path,monkeypatch,capsys
     assert (deploy/'secrets/web-auth.json').read_text()=='page-auth'
     assert json.loads((deploy/'installation.json').read_text())==record
     if public_url:
-        assert public_url+'/serein/mcp' in guide and '访问地址未读取' not in guide
+        assert public_url+'/lattice/mcp' in guide and '访问地址未读取' not in guide
     else:
         assert '访问地址未读取' in guide and '沿用原来的' in guide
         assert 'http://' not in guide and 'https://' not in guide
@@ -440,7 +440,7 @@ def test_menu_rotate_key_without_env_still_shows_key(tmp_path,monkeypatch,capsys
 def test_rotate_key_keeps_success_and_prints_key_when_guide_cannot_be_saved(tmp_path,monkeypatch,capsys):
     module=manager();deploy=tmp_path/'deploy';(deploy/'secrets').mkdir(parents=True)
     (deploy/'secrets/api-token').write_text('old-key')
-    (deploy/'.env').write_text('SEREIN_PORT=19217\n')
+    (deploy/'.env').write_text('LATTICE_PORT=19217\n')
     monkeypatch.setattr(module,'DEPLOY',deploy);monkeypatch.setattr(module,'confirm',lambda *a:True)
     calls=[];monkeypatch.setattr(module,'service_action',lambda *a:calls.append(a))
     write=module.private_file
@@ -514,13 +514,13 @@ def synthetic_backups(deploy):
 
 def test_backup_cleanup_keeps_latest_three_and_does_not_touch_other_data(tmp_path):
     helper=backup_helper();files=synthetic_backups(tmp_path)
-    for relative in ['backups/manual.tar.gz','backups/20260913T120006Z-00000006.tar.pending','runtime/serein.db','secrets/api-token']:
+    for relative in ['backups/manual.tar.gz','backups/20260913T120006Z-00000006.tar.pending','runtime/lattice.db','secrets/api-token']:
         path=tmp_path/relative;path.parent.mkdir(exist_ok=True);path.write_bytes(b'keep')
     plan=helper.cleanup_plan(tmp_path)
     assert [row['name'] for row in plan['remove']]==[files[1].name,files[0].name]
     assert helper.cleanup(tmp_path,plan)=={'removed':2,'bytes':3,'retained':3}
     assert [p.exists() for p in files]==[False,False,True,True,True]
-    assert all((tmp_path/r).read_bytes()==b'keep' for r in ['backups/manual.tar.gz','backups/20260913T120006Z-00000006.tar.pending','runtime/serein.db','secrets/api-token'])
+    assert all((tmp_path/r).read_bytes()==b'keep' for r in ['backups/manual.tar.gz','backups/20260913T120006Z-00000006.tar.pending','runtime/lattice.db','secrets/api-token'])
     assert helper.cleanup_plan(tmp_path)['remove']==[]
     with pytest.raises(ValueError,match='至少保留'):helper.cleanup_plan(tmp_path,0)
 
@@ -530,7 +530,7 @@ def test_backup_cleanup_rejects_changed_preview_before_any_delete(tmp_path):
     files[0].write_bytes(b'changed')
     with pytest.raises(ValueError,match='清单已变化'):helper.cleanup(tmp_path,plan)
     assert all(p.exists() for p in files)
-    plan=helper.cleanup_plan(tmp_path);plan['remove']=[{'name':'../runtime/serein.db'}]
+    plan=helper.cleanup_plan(tmp_path);plan['remove']=[{'name':'../runtime/lattice.db'}]
     with pytest.raises(ValueError):helper.cleanup(tmp_path,plan)
     assert all(p.exists() for p in files)
 

@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {importProgressSummary} from '../utils/importProgress.js';
 
 async function request(path='',body) {
-  const response=await fetch('/__serein/imports'+path,{method:body?'POST':'GET',
+  const response=await fetch('/__lattice/imports'+path,{method:body?'POST':'GET',
     ...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
   const result=await response.json();
   if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'导入服务暂不可用，请检查文件大小和格式后重试。');

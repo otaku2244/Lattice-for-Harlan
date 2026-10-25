@@ -47,18 +47,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\one_click.ps1
 
 更新成功后在 `deploy/update-state.json` 记录实际安装的 Git 提交并退出旧菜单，重新输入 `se` 使用新版菜单。Git 拉取在临时目录中完成，因此原安装目录可以是解压版，也可以保留旧 Git 历史；不需要重新克隆安装目录、不重做数据转换。安装目录已有的 Git 分支不移动；开发请使用独立工作区，不要把安装目录的旧历史重新推回上游。
 
-**旧脚本首次接入：** rc65 及更早版本的菜单仍是下载发行包（或没有菜单 11）。在原来的 Serein 安装目录运行下面的一次性引导，读取 main 上的新更新脚本，用 Git 拉取代码并原地重建。以后直接使用菜单 1；无须新发一个 Release 来接入。
+**旧脚本首次接入：** rc65 及更早版本的菜单仍是下载发行包（或没有菜单 11）。在原来的 Lattice 安装目录运行下面的一次性引导，读取 main 上的新更新脚本，用 Git 拉取代码并原地重建。以后直接使用菜单 1；无须新发一个 Release 来接入。
 
 Linux / Termux（`curl` 失败时不会执行后续脚本）：
 
 ```sh
-curl -fL https://raw.githubusercontent.com/Yinglianchun/Serein/main/scripts/upstream_update.py -o /tmp/serein-upstream-update.py && python3 /tmp/serein-upstream-update.py --root "$PWD"
+curl -fL https://raw.githubusercontent.com/Yinglianchun/Serein/main/scripts/upstream_update.py -o /tmp/lattice-upstream-update.py && python3 /tmp/lattice-upstream-update.py --root "$PWD"
 ```
 
 Termux 若没有 `/tmp` 写权限，将上面的两个 `/tmp/` 都替换为 `$TMPDIR/`。Windows PowerShell：
 
 ```powershell
-$updater = Join-Path $env:TEMP 'serein-upstream-update.py'
+$updater = Join-Path $env:TEMP 'lattice-upstream-update.py'
 Invoke-WebRequest https://raw.githubusercontent.com/Yinglianchun/Serein/main/scripts/upstream_update.py -OutFile $updater -ErrorAction Stop
 python $updater --root (Get-Location).Path
 ```
@@ -126,9 +126,9 @@ gateway 或记忆库；3 补齐向量、重建当前模型向量或清理孤立�
 
 Docker 两个 Compose 服务为 `gateway`、`memory`；直跑保持相同的服务职责。
 安装脚本依次构建 memory、gateway，降低小内存 VPS 冷安装时的并行资源占用。
-Python 依赖先按 `pyproject.toml` 单独安装，之后才复制并安装 Serein 源码。只修改源码时复用依赖层；首次构建、依赖配置或基础镜像变化、Docker 构建缓存被清理时才重新安装依赖。pip 下载缓存也保留在 BuildKit 中，依赖层需要重建时可以复用已下载的包。
+Python 依赖先按 `pyproject.toml` 单独安装，之后才复制并安装 Lattice 源码。只修改源码时复用依赖层；首次构建、依赖配置或基础镜像变化、Docker 构建缓存被清理时才重新安装依赖。pip 下载缓存也保留在 BuildKit 中，依赖层需要重建时可以复用已下载的包。
 网关提供需要页面鉴权的前端与代理；
-`/v1/models`、`/v1/chat/completions` 与远程 `/serein/mcp` 都由 Gateway Key 保护，与页面密码分开。MCP 传输选择 Streamable HTTP，无需额外启动进程。支持 OAuth 的客户端在 `https://你的域名/serein/mcp` 选择 OAuth，随后在 Serein 授权页手动输入 Gateway Key 确认；不支持 OAuth、但可自定义请求头的客户端继续使用 `Authorization: Bearer <Gateway Key>`。OAuth 授权要求 HTTPS 域名（同机 localhost 例外）；公网 IP 的 HTTP 入口只能使用静态 Key。已有反向代理须转发全部路径，不能只放行 `/serein/mcp`，因为 OAuth 还会访问根路径下的 `/.well-known/oauth-*`、`/register`、`/authorize`、`/token`。旧 `/mcp` 和 `/mcp/` 保留兼容。交互菜单配置 HTTPS 时会写入 `SEREIN_PUBLIC_ORIGIN`；手动 Compose/直跑部署也必须把它设为无路径的 HTTPS origin（例如 `https://memory.example.com`）。网关不信任来访请求自行声明的 `X-Forwarded-Proto`。
+`/v1/models`、`/v1/chat/completions` 与远程 `/lattice/mcp` 都由 Gateway Key 保护，与页面密码分开。MCP 传输选择 Streamable HTTP，无需额外启动进程。支持 OAuth 的客户端在 `https://你的域名/lattice/mcp` 选择 OAuth，随后在 Lattice 授权页手动输入 Gateway Key 确认；不支持 OAuth、但可自定义请求头的客户端继续使用 `Authorization: Bearer <Gateway Key>`。OAuth 授权要求 HTTPS 域名（同机 localhost 例外）；公网 IP 的 HTTP 入口只能使用静态 Key。已有反向代理须转发全部路径，不能只放行 `/lattice/mcp`，因为 OAuth 还会访问根路径下的 `/.well-known/oauth-*`、`/register`、`/authorize`、`/token`。旧 `/mcp` 和 `/mcp/` 保留兼容。交互菜单配置 HTTPS 时会写入 `LATTICE_PUBLIC_ORIGIN`；手动 Compose/直跑部署也必须把它设为无路径的 HTTPS origin（例如 `https://memory.example.com`）。网关不信任来访请求自行声明的 `X-Forwarded-Proto`。
 
 以网页入口 `https://你的域名` 为例，在客户端填写：
 
@@ -136,14 +136,14 @@ Python 依赖先按 `pyproject.toml` 单独安装，之后才复制并安装 Ser
 | --- | --- | --- |
 | 聊天 API（OpenAI 兼容） | Base URL：`https://你的域名/v1` | API Key 输入框填完整 Gateway Key，不加 `Bearer` 前缀 |
 | 模型列表 / 手动聊天请求 | `GET https://你的域名/v1/models` / `POST https://你的域名/v1/chat/completions` | 请求头 `Authorization: Bearer <Gateway Key>` |
-| MCP（Streamable HTTP + OAuth） | 服务器 URL：`https://你的域名/serein/mcp` | 身份验证选 OAuth；授权页输入 Gateway Key 并确认 |
+| MCP（Streamable HTTP + OAuth） | 服务器 URL：`https://你的域名/lattice/mcp` | 身份验证选 OAuth；授权页输入 Gateway Key 并确认 |
 | MCP（Streamable HTTP + 静态 Key） | 同一服务器 URL | 请求头 `Authorization: Bearer <Gateway Key>`；专门的 Bearer Token 输入框只填 Key |
 
-上表静态方式中的 `<Gateway Key>` 要连同尖括号一起替换成实际 Key，`Bearer` 后保留一个空格。OAuth 时不要把 Key 写进 URL 或客户端配置，只在域名相同的 Serein 授权页输入。直接访问 IP 时可将地址换成 `http://公网IP:网关端口`，但该方式不能完成 OAuth。网页登录密码和模型厂商 API Key 都不代替 Gateway Key。公网明文 HTTP 的传输风险见下文 [HTTP 兼容与访问风险](#http-兼容与访问风险)。
+上表静态方式中的 `<Gateway Key>` 要连同尖括号一起替换成实际 Key，`Bearer` 后保留一个空格。OAuth 时不要把 Key 写进 URL 或客户端配置，只在域名相同的 Lattice 授权页输入。直接访问 IP 时可将地址换成 `http://公网IP:网关端口`，但该方式不能完成 OAuth。网页登录密码和模型厂商 API Key 都不代替 Gateway Key。公网明文 HTTP 的传输风险见下文 [HTTP 兼容与访问风险](#http-兼容与访问风险)。
 
-升级已有安装后，需要重新部署网关和记忆服务才能使用新 `/serein/mcp` 路由；仅替换管理脚本不会给旧服务增加路由。旧 `/mcp` 地址继续可用。
+升级已有安装后，需要重新部署网关和记忆服务才能使用新 `/lattice/mcp` 路由；仅替换管理脚本不会给旧服务增加路由。旧 `/mcp` 地址继续可用。
 
-聊天通过此网关、且设置中开启“开窗续接”后，可直接发送 `/resume 我们接着聊昨天那本书吧`。网关加载选中的接续内容并保留指令后面的话，不经过客户端工具返回通道。它不会替直连其他模型平台的聊天识别指令；仅连接 Serein MCP 不会处理该指令；需要聊天经过此网关。
+聊天通过此网关、且设置中开启“开窗续接”后，可直接发送 `/resume 我们接着聊昨天那本书吧`。网关加载选中的接续内容并保留指令后面的话，不经过客户端工具返回通道。它不会替直连其他模型平台的聊天识别指令；仅连接 Lattice MCP 不会处理该指令；需要聊天经过此网关。
 核心不直接映射公网端口。访问地址与端口在安装时选择；公网访问推荐配置 HTTPS 或使用加密隧道，HTTP 入口仍保留兼容。
 
 同机访问默认监听 `127.0.0.1`；手机连电脑或其他设备访问时选择 `0.0.0.0`，填写服务器的局域网 IP／公网域名。
@@ -152,7 +152,7 @@ Python 依赖先按 `pyproject.toml` 单独安装，之后才复制并安装 Ser
 查看现有 Key 可读取该连接说明，或读取 `deploy/secrets/api-token` 的完整内容，无需使用菜单 6。网页 **使用说明 → 接入** 提供公网 IP 和域名的连接地址模板及字段填写方法，但不会展示实际密钥。
 
 手动 Docker 部署若没有 `deploy/.env`，更换 Key 并成功重启后仍会显示新 Key。若已保存公网入口，连接说明沿用该入口；否则提示沿用原来的访问地址，不猜测端口或创建 `.env`。连接说明文件无法保存时也会先显示 Key，再单独提示保存失败。重启失败仍恢复旧 Key。
-在客户端添加请求头 `X-Serein-Window-ID`，值为当前会话 ID：同一会话保持不变，新窗口换值；支持会话 ID 变量的客户端可使用变量。不填时回退到 `main`，仍可聊天及使用记忆，但共用提醒轮次和召回冷却，不能识别新窗口。全局固定值也不能自动分窗；开窗续接请在经过此网关的聊天中发送 `/resume`。
+在客户端添加请求头 `X-Lattice-Window-ID`，值为当前会话 ID：同一会话保持不变，新窗口换值；支持会话 ID 变量的客户端可使用变量。不填时回退到 `main`，仍可聊天及使用记忆，但共用提醒轮次和召回冷却，不能识别新窗口。全局固定值也不能自动分窗；开窗续接请在经过此网关的聊天中发送 `/resume`。
 直跑另外选择记忆核心、页面内部服务的两个端口；只绑定 loopback，不需要向外放行。
 
 直跑日志在 `deploy/runtime/logs/{memory,gateway}.log`。管理器使用实例内的独占锁与带随机凭据的本机控制端口，
@@ -161,7 +161,7 @@ Python 依赖先按 `pyproject.toml` 单独安装，之后才复制并安装 Ser
 
 ## 快捷命令 se
 
-首次运行 `scripts/one_click.sh` 或 `scripts/one_click.ps1` 会自动注册 `se`。之后先进入要管理的 Serein 发行目录，再输入：
+首次运行 `scripts/one_click.sh` 或 `scripts/one_click.ps1` 会自动注册 `se`。之后先进入要管理的 Lattice 发行目录，再输入：
 
 ```sh
 se
@@ -169,7 +169,7 @@ se
 
 命令读取当前目录，不绑定第一次安装的位置；多实例分别进入各自目录即可。错误目录只显示提示，不会寻找或启动其他实例。更新旧版本后，再运行一次启动脚本即可注册。也可以单独执行 `python scripts/install_shortcut.py`。
 
-Linux root 安装到 `/usr/local/bin/se`，普通用户使用 `~/.local/bin/se`；必要时为用户 shell 配置追加 PATH。Termux 使用自己的 `$PREFIX/bin/se`。Windows 使用 `%LOCALAPPDATA%\Serein\bin\se.cmd` 并保存到用户 PATH；新开终端后生效。注册重复运行不追加相同配置，已有其他同名命令不覆盖；无法注册时仍可使用原启动脚本。
+Linux root 安装到 `/usr/local/bin/se`，普通用户使用 `~/.local/bin/se`；必要时为用户 shell 配置追加 PATH。Termux 使用自己的 `$PREFIX/bin/se`。Windows 使用 `%LOCALAPPDATA%\Lattice\bin\se.cmd` 并保存到用户 PATH；新开终端后生效。注册重复运行不追加相同配置，已有其他同名命令不覆盖；无法注册时仍可使用原启动脚本。
 
 ## 配置局域网／公网入口
 
@@ -306,7 +306,7 @@ Windows Docker Desktop 冷安装与安卓 Termux 的真机运行兼容性尚未�
 
 ## 网页旧库迁移与备份
 
-使用说明位于侧栏圆圈问号。设置页把“对话导入”和“旧库迁移”分成两个标签。旧库迁移可上传最多 64 MiB 的 tar/tar.gz，也可输入**运行 Serein 的机器**上的旧库根目录、buckets 目录或 tar 路径。直跑实例直接读取；Docker 实例先在安装菜单 7 授权旧库根目录，脚本将其只读挂载并短暂重建当前实例两个容器，随后在网页输入该目录或子路径。未授权的任意宿主机路径不可由容器读取。路径预览后可在浏览器一键导出所选来源的 ZIP（最多 5 万文件、4 GiB）；原库停止写入后再确认迁移。预览后确认名字、别名和模型费用才启动后台任务。关闭页面不停止任务；暂停在当前条目或阶段结束后生效，服务中断后可用相同配置续跑。原库若在预览后变化，需要重新预览；模型和主域沿用当前实例的配置，网页不自动覆盖上游密钥。
+使用说明位于侧栏圆圈问号。设置页把“对话导入”和“旧库迁移”分成两个标签。旧库迁移可上传最多 64 MiB 的 tar/tar.gz，也可输入**运行 Lattice 的机器**上的旧库根目录、buckets 目录或 tar 路径。直跑实例直接读取；Docker 实例先在安装菜单 7 授权旧库根目录，脚本将其只读挂载并短暂重建当前实例两个容器，随后在网页输入该目录或子路径。未授权的任意宿主机路径不可由容器读取。路径预览后可在浏览器一键导出所选来源的 ZIP（最多 5 万文件、4 GiB）；原库停止写入后再确认迁移。预览后确认名字、别名和模型费用才启动后台任务。关闭页面不停止任务；暂停在当前条目或阶段结束后生效，服务中断后可用相同配置续跑。原库若在预览后变化，需要重新预览；模型和主域沿用当前实例的配置，网页不自动覆盖上游密钥。
 
 旧库里被标为“自我锚点”的正文直接丢弃，不恢复独立“自我”分类或作为梦境固定身份锚点；扫描预览会报告丢弃数量。持续更新的窗影承担流动的自我。心绪 Persona 状态与备忘是另两项可选功能，仍按下述规则迁入。
 

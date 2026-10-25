@@ -5,11 +5,11 @@ import sqlite3
 
 import pytest
 
-from serein.core import Conflict, Store
-from serein.core.notebook import read_entry, resolve_entry
-from serein.core.store import digest, encode
-from serein.ingest.diary_snapshot import export_diaries
-from serein.ingest.legacy_diary import import_diaries
+from lattice.core import Conflict, Store
+from lattice.core.notebook import read_entry, resolve_entry
+from lattice.core.store import digest, encode
+from lattice.ingest.diary_snapshot import export_diaries
+from lattice.ingest.legacy_diary import import_diaries
 
 
 def artifact(path, raw):
@@ -28,7 +28,7 @@ def diary_snapshot():
             entry(3, "darkroom", unlock="2026-05-05T00:00:00+08:00"),
             entry(4, "darkroom", deleted="old deletion", source="legacy_darkroom:dr_old")]
     old = encode({"id": "dr_old", "note": rows[3]["content"], "visibility": "active"}).encode() + b"\n"
-    return {"format": "serein-diary-snapshot-v1", "origin": "test-diaries", "captured_at": "2026-05-04T12:00:00+08:00",
+    return {"format": "lattice-diary-snapshot-v1", "origin": "test-diaries", "captured_at": "2026-05-04T12:00:00+08:00",
             "diaries": rows,
             "comments": [{"id": 1, "diary_id": 1, "author": "user", "content": "comment", "created_at": "old"},
                          {"id": 2, "diary_id": 2, "author": "ai", "content": "deleted owner comment", "created_at": "old"}],

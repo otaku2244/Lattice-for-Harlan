@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from serein.extensions import pipeline as p
-from serein.extensions import pipeline_latest as latest
+from lattice.extensions import pipeline as p
+from lattice.extensions import pipeline_latest as latest
 
 
 def case(stable=(1, 2, 3, 4), *, manual=False, action='extend', opt_in=True):

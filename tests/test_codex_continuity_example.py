@@ -13,7 +13,7 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
-def test_example_preserves_serein_original_and_upstream_message_ids():
+def test_example_preserves_lattice_original_and_upstream_message_ids():
     packet = json.loads((SCRIPT.parent / "packet.example.json").read_text(encoding="utf-8"))
     merged = MODULE.merge_resume_pages([packet])
     items = MODULE.build_history_items(merged)

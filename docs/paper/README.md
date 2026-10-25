@@ -15,7 +15,7 @@
 
 ## 与公开版的关系
 
-论文报告开发中的历史实现及 E1–E10 各自的执行条件，不是当前发行版的全套功能验收。文中的 Bridge、历史 Ombre-Brain 后端、部署日期与研究记录保留原意。**本仓库的自动 Event 直接保存到 Serein，不进入 Bridge 收件箱**；当前运行与配置以[自动 Event 说明](../automatic-events.md)为准。
+论文报告开发中的历史实现及 E1–E10 各自的执行条件，不是当前发行版的全套功能验收。文中的 Bridge、历史 Ombre-Brain 后端、部署日期与研究记录保留原意。**本仓库的自动 Event 直接保存到 Lattice，不进入 Bridge 收件箱**；当前运行与配置以[自动 Event 说明](../automatic-events.md)为准。
 
 ## 本目录包含什么
 

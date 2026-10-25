@@ -1,14 +1,14 @@
 import asyncio
 import pytest
 from fastapi.testclient import TestClient
-from serein.api.http import create_app
-from serein.api.mcp import create_server
-from serein.application import Application
-from serein.compat.window_shadows import WindowShadows
-from serein.compat.raw_archive import raw_archive
-from serein.core.personal import Personal
-from serein.core.store import Store, Conflict
-from serein.deployment import save_settings, read_settings
+from lattice.api.http import create_app
+from lattice.api.mcp import create_server
+from lattice.application import Application
+from lattice.compat.window_shadows import WindowShadows
+from lattice.compat.raw_archive import raw_archive
+from lattice.core.personal import Personal
+from lattice.core.store import Store, Conflict
+from lattice.deployment import save_settings, read_settings
 from test_public_features import settings
 
 
@@ -171,7 +171,7 @@ def test_mcp_resume_paginates_full_unicode_body_and_rejects_changed_material(set
 
 
 def test_resume_limits_auth_and_selection_conflicts(settings,monkeypatch):
-    from serein.extensions import handoff
+    from lattice.extensions import handoff
     save_settings(settings.database,{'features':{'resume':True},'resume':{'mode':'mcp','pending_originals':False}})
     with Store(settings.database) as store:
         store.create('first','event','Synthetic first','First body')
@@ -200,7 +200,7 @@ def test_resume_limits_auth_and_selection_conflicts(settings,monkeypatch):
 
 @pytest.mark.parametrize('selected',[False,True])
 def test_mcp_resume_respects_explicit_tool_allowlist(settings,selected):
-    from serein.config import Settings
+    from lattice.config import Settings
     save_settings(settings.database,{'features':{'resume':True},'resume':{'mode':'mcp'}})
     server=create_server(Application(Settings(settings.database,settings.index,writable=True,
         mcp_tools=['read_memory',*(['resume'] if selected else [])])))

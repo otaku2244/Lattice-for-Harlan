@@ -10,15 +10,15 @@ const dom=new JSDOM('<div id="root"></div>',{url:'http://synthetic.invalid',pret
 for(const key of ['window','document','navigator','HTMLElement','Event','CustomEvent','Node'])Object.defineProperty(globalThis,key,{value:dom.window[key],configurable:true});
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 dom.window.HTMLElement.prototype.scrollTo=()=>{};
-window.localStorage.setItem('serein.awake.name.assistant','Synthetic Writer');
-window.localStorage.setItem('serein.diary.entries.v1',JSON.stringify([{id:'diary-vps-1',date:'2026-10-10',time:'09:00',title:'给两年后的你',excerpt:'SECRET mirror',body:['SECRET mirror'],darkroom:false,locked:false,unlockAt:'2020-01-01',revision:99}]));
+window.localStorage.setItem('lattice.awake.name.assistant','Synthetic Writer');
+window.localStorage.setItem('lattice.diary.entries.v1',JSON.stringify([{id:'diary-vps-1',date:'2026-10-10',time:'09:00',title:'给两年后的你',excerpt:'SECRET mirror',body:['SECRET mirror'],darkroom:false,locked:false,unlockAt:'2020-01-01',revision:99}]));
 let now=Date.parse('2026-10-09T09:00:00+08:00'),released=false,allLocked=false,empty=false,offline=false,requests=0;
 const originalNow=Date.now;Date.now=()=>now;
 const timers=new Map();let nextTimer=0;
 window.setInterval=(fn,ms)=>{const key=++nextTimer;timers.set(key,{fn,ms});return key;};
 window.clearInterval=key=>timers.delete(key);
 globalThis.fetch=async url=>{
- assert.equal(url,'/__serein/live/diaries');requests++;
+ assert.equal(url,'/__lattice/live/diaries');requests++;
  if(offline)throw new Error('Synthetic offline refresh');
  const entries=empty?[]:[
   {id:1,date:'2026-10-10',title:'给两年后的你',entry_type:'darkroom',author:'ai',created_at:'2026-10-10T09:00:00+08:00',unlock_at:'2028-10-09T09:00:00+08:00',locked:true,content:'SECRET capsule body'},
@@ -27,7 +27,7 @@ globalThis.fetch=async url=>{
  ];
  return {ok:true,json:async()=>({status:'ok',snapshotId:String(requests),entries})};
 };
-const directory=await mkdtemp(join(tmpdir(),'serein-darkroom-dom-'));let root;
+const directory=await mkdtemp(join(tmpdir(),'lattice-darkroom-dom-'));let root;
 try {
  const bundle=await build({stdin:{contents:`import React,{act} from 'react';import {createRoot} from 'react-dom/client';import {DiaryPage} from './src/pages/DiaryPage.jsx';export {act};export function mount(){const root=createRoot(document.getElementById('root'));root.render(<DiaryPage/>);return root;}`,resolveDir:process.cwd(),loader:'jsx'},jsx:'automatic',bundle:true,platform:'node',format:'esm',write:false,define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"'}});
  const path=join(directory,'bundle.mjs');await writeFile(path,bundle.outputFiles[0].text);

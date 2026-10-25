@@ -58,7 +58,7 @@ export function ResumePage({onOpenSettings}) {
     request.current=new AbortController();setPreviewing(true);setPreviewError('');
     const {mode,command_enabled,mcp_enabled,...contentSelection}=selection;
     try {
-      const response=await fetch('/__serein/resume',{method:'POST',cache:'no-store',signal:request.current.signal,
+      const response=await fetch('/__lattice/resume',{method:'POST',cache:'no-store',signal:request.current.signal,
         headers:{'Content-Type':'application/json'},body:JSON.stringify({window_id:'main',cursor,selection:contentSelection})});
       const value=await response.json();
       if(!response.ok)throw new Error(typeof value.detail==='string'?value.detail:'续接资料暂时不可用，请重新读取。');

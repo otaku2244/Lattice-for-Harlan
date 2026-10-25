@@ -7,10 +7,10 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 from test_public_features import settings, ingest, synthetic_runner, output_for
-from serein.core.store import Store, encode, Conflict
-from serein.extensions import pipeline as p, pipeline_recovery as recovery
-from serein.api.http import create_app
-from serein import work_tasks
+from lattice.core.store import Store, encode, Conflict
+from lattice.extensions import pipeline as p, pipeline_recovery as recovery
+from lattice.api.http import create_app
+from lattice import work_tasks
 
 
 def freeze(settings):
@@ -372,8 +372,8 @@ def test_rebuild_preserves_published_events_other_caches_and_queue_priority(sett
 
 def test_daily_flush_saves_producer_snapshot_and_route_provenance(settings, monkeypatch):
     from test_pipeline_limits import pairs
-    from serein.compat.raw_archive import raw_archive
-    from serein.deployment import save_settings
+    from lattice.compat.raw_archive import raw_archive
+    from lattice.deployment import save_settings
     raw_archive(settings).ingest([{'source_event_id': str(i), 'session_id': 'daytime',
         'role': m['role'], 'text': m['content'], 'created_at': m['created_at']}
         for i, m in enumerate(pairs(5, True))], source='test')

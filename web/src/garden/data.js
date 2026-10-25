@@ -4,7 +4,7 @@ export async function readGardenSnapshot(read = readMemory) {
     const items = [];
     let count;
     do {
-      const page = await read('/__serein/live/fact-events', {
+      const page = await read('/__lattice/live/fact-events', {
         type: 'event', status: 'active', includeSources: false, limit: 500, offset: items.length,
       });
       if (!Array.isArray(page.items) || !Number.isInteger(page.count)) throw new Error('invalid_event_page');
@@ -15,7 +15,7 @@ export async function readGardenSnapshot(read = readMemory) {
     return items;
   }
   const [projection, events] = await Promise.all([
-    read('/__serein/live/memory-scenes', { sourceIds: [] }), activeEvents(),
+    read('/__lattice/live/memory-scenes', { sourceIds: [] }), activeEvents(),
   ]);
   if (projection.status !== 'ok' || !Array.isArray(projection.scenes) || !Array.isArray(projection.edges)) {
     throw new Error('invalid_scene_projection');

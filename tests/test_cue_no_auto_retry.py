@@ -2,7 +2,7 @@
 
 import asyncio
 
-from serein.recall.germany.memory_recall.cue_passage_shadow import CuePassageShadowIndex
+from lattice.recall.germany.memory_recall.cue_passage_shadow import CuePassageShadowIndex
 
 
 class Binder:
@@ -150,8 +150,8 @@ def test_old_inflight_result_cannot_clear_new_source_failure(tmp_path):
 def test_legacy_cue_and_scene_clients_disable_sdk_retries(monkeypatch):
     from importlib import import_module
     import openai
-    from serein.compat.germany.scene_linker import SceneLinker
-    from serein.recall.germany.memory_recall.cue_passage_shadow import DeepSeekCuePassageBinder
+    from lattice.compat.germany.scene_linker import SceneLinker
+    from lattice.recall.germany.memory_recall.cue_passage_shadow import DeepSeekCuePassageBinder
 
     calls = []
 
@@ -160,7 +160,7 @@ def test_legacy_cue_and_scene_clients_disable_sdk_retries(monkeypatch):
         return object()
 
     monkeypatch.setattr(openai, 'AsyncOpenAI', client)
-    monkeypatch.setattr(import_module('serein.recall.germany.memory_recall.cue_passage_shadow'),
+    monkeypatch.setattr(import_module('lattice.recall.germany.memory_recall.cue_passage_shadow'),
                         'AsyncOpenAI', client)
     DeepSeekCuePassageBinder({'cue_passage_shadow': {
         'api_key': 'synthetic', 'base_url': 'https://example.invalid', 'binding_model': 'test'}})

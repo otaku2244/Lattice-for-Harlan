@@ -1,4 +1,4 @@
-# Serein public edition
+# Lattice public edition
 Use local empty databases or synthetic fixtures. Never discover or connect to a private deployment.
 Preserve current mixed recall, evidence, lifecycle, cooldown and writer preview/save contracts.
 Public release files are explicitly enumerated by the release manifest. Do not package runtime data or Git history.

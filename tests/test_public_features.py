@@ -5,16 +5,16 @@ import zipfile
 import pytest
 from dataclasses import replace
 from fastapi.testclient import TestClient
-from serein.application import Application
-from serein.api.http import create_app
-from serein.api.mcp import create_server
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings, read_settings
-from serein.api.export import markdown_archive
-from serein.compat.raw_archive import raw_archive
-from serein.extensions.pipeline import advance, submit, ROLES
+from lattice.application import Application
+from lattice.api.http import create_app
+from lattice.api.mcp import create_server
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings, read_settings
+from lattice.api.export import markdown_archive
+from lattice.compat.raw_archive import raw_archive
+from lattice.extensions.pipeline import advance, submit, ROLES
 
 @pytest.fixture
 def settings(tmp_path):
@@ -75,7 +75,7 @@ def test_resume_recent_ten_pending_and_export_readable_only(settings):
         store.create('favorite','scene','Book','Original scene body')
         store.create('hidden','scene','Hidden','Deleted body',lifecycle='deleted')
         for i in range(12):store.create(f'event-{i:02}','event','Event',f'Event {i}',created_at=f'2025-01-{i+1:02}T00:00:00Z')
-    from serein.core.personal import Personal
+    from lattice.core.personal import Personal
     Personal(settings.database).save('favorite','favorite',{'favorite':True},document_id='favorite')
     raw_archive(settings).ingest([{'source_event_id':'m1','session_id':'a','role':'user','text':'Unfinished original','created_at':'2025-02-01T00:00:00Z'}],source='test')
     result=Application(settings).contributions.tools['resume']('new')
@@ -106,7 +106,7 @@ def output_for(role,request):
             'decision_review':{'events':[{'event_index':0,'reason':'继续讨论读书会的安排'}],'boundaries':[],'dispositions':[]},
             **({'image_transcriptions':[{'input_image':i,'text':'Visible book title','unreadable':False} for i,_ in enumerate(request['images'],1)]} if request.get('images') else {})}
     if role=='event_writer':
-        from serein.extensions.pipeline_latest import _SELF_REVIEW_KEYS
+        from lattice.extensions.pipeline_latest import _SELF_REVIEW_KEYS
         source=request['messages'][0]
         span={'source_message_id':source.get('id',1),'quote':source['content']}
         sentence='We agreed to '+source['content']
@@ -121,13 +121,18 @@ def output_for(role,request):
 async def synthetic_runner(role,request):return output_for(role,request)
 
 def test_pipeline_does_not_truncate_a_long_dialogue_unit(settings):
-    raw_archive(settings).ingest([{'source_event_id':str(i),'session_id':'long','role':'assistant' if i==201 else 'user',
-        'text':f'part {i}','created_at':'2025-01-01T00:00:00Z'} for i in range(202)],source='test')
+    messages=[{'source_event_id':str(i),'session_id':'long','role':'assistant' if i==201 else 'user',
+        'text':f'part {i}','created_at':'2025-01-01T00:00:00Z'} for i in range(202)]
+    raw_archive(settings).ingest(messages,source='test')
+    # Exercise rejection and recovery with explicit budgets, independent of defaults.
+    save_settings(settings.database,{'pipeline':{'max_prompt_chars':1}})
     with pytest.raises(ValueError,match='提示词'):
         asyncio.run(advance(settings.database,include_recent=True))
-    save_settings(settings.database,{'pipeline':{'max_prompt_chars':80000}})
+    save_settings(settings.database,{'pipeline':{'max_prompt_chars':300000}})
     task=asyncio.run(advance(settings.database,include_recent=True))
-    assert task['status']=='awaiting_agent' and len(task['request']['messages'])==202
+    assert task['status']=='awaiting_agent'
+    assert [(m['role'],m['content']) for m in task['request']['messages']]==[
+        (m['role'],m['text']) for m in messages]
 
 def test_pipeline_agent_jobs_retry_ownership_and_rolling_extension(settings):
     ingest(settings)
@@ -170,20 +175,20 @@ def test_pipeline_model_api_selection_uses_names_and_insufficient_writer_stays_p
             result['claim_groups']=[];result['sentence_evidence']=[]
             result['self_review']['owned_evidence_sufficient']=False
         return {'choices':[{'message':{'content':json.dumps(result)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     result=asyncio.run(advance(settings.database,include_recent=True))
     assert calls==list(ROLES) and result['events']==0 and result['pending']==2
     with Store(settings.database) as store:
         assert store.conn.execute('SELECT COUNT(*) FROM raw_processing').fetchone()[0]==0
 
 def test_persona_and_anti_retreat_independent_and_memo_ack(settings,monkeypatch):
-    from serein.chat_features import prepare, delivered, after_reply
+    from lattice.chat_features import prepare, delivered, after_reply
     calls=[]
     async def complete(model,payload):
         calls.append(payload)
         assert 'max_tokens' not in payload and 'max_completion_tokens' not in payload and 'max_output_tokens' not in payload
         return {'choices':[{'message':{'content':json.dumps({'signal':True,'kind':'conflict','confidence':.99})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     save_settings(settings.database,{'models':[{'id':'local','model':'synthetic','base_url':'http://127.0.0.1:9/v1'}],
         'assignments':{'persona':'local','anti_retreat':'local'}})
     assert asyncio.run(prepare(settings.database,'window','text',[]))[0]=='' and calls==[]

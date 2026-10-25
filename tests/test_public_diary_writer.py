@@ -3,15 +3,15 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.application import Services
-from serein.compat.diaries import Diaries
-from serein.compat.germany.diary_store import DiaryLockedError
-from serein.config import Settings
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.core.writer import Writer
-from serein.deployment import save_settings
+from lattice.api.http import create_app
+from lattice.application import Services
+from lattice.compat.diaries import Diaries
+from lattice.compat.germany.diary_store import DiaryLockedError
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.core.writer import Writer
+from lattice.deployment import save_settings
 
 
 def settings_for(tmp_path, canonical=True):
@@ -106,7 +106,7 @@ def test_missing_canonical_diary_projection_does_not_block_later_writes(tmp_path
 
 def test_projection_failure_rolls_back_canonical_diary_and_receipt(tmp_path, monkeypatch):
     settings = settings_for(tmp_path)
-    import serein.compat.diaries as module
+    import lattice.compat.diaries as module
     def fail(conn):
         raise RuntimeError('synthetic projection failure')
     monkeypatch.setattr(module, 'project_diaries', fail)

@@ -1,9 +1,9 @@
 import sqlite3
 from contextlib import closing
 
-from serein.compat.germany.raw_events import RawEventStore
-from serein.compat.raw_archive import seed_raw_archive
-from serein.core.store import Store
+from lattice.compat.germany.raw_events import RawEventStore
+from lattice.compat.raw_archive import seed_raw_archive
+from lattice.core.store import Store
 from test_live_clients import live
 
 
@@ -30,7 +30,7 @@ def test_ingest_retries_preserve_raw_and_never_create_memories(live):
 
 
 def test_transplant_preserves_ids_source_rows_and_search(tmp_path):
-    source = tmp_path/'raw.sqlite'; target = tmp_path/'serein.db'
+    source = tmp_path/'raw.sqlite'; target = tmp_path/'lattice.db'
     archive = RawEventStore({'raw_events': {'db_path': str(source)}})
     record = {'role': 'assistant', 'source_event_id': 'original-42', 'text': '保留旧日的风铃',
               'created_at': '2026-09-01T12:00:00Z', 'metadata': {'marker': 'unchanged'}}

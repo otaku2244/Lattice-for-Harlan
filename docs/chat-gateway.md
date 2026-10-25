@@ -1,6 +1,6 @@
 # Chat gateway
 
-已有自己模型调用与工具循环的宿主可改走独立的 [Hook 接入示例](hook-integration.md)：只向 Serein 取前情，在实际模型请求成功后由宿主登记交付。Hook 不会替宿主调用聊天模型或归档对话。
+已有自己模型调用与工具循环的宿主可改走独立的 [Hook 接入示例](hook-integration.md)：只向 Lattice 取前情，在实际模型请求成功后由宿主登记交付。Hook 不会替宿主调用聊天模型或归档对话。
 
 Upstream configuration uses the `gateway.upstreams` structure: one connection
 per upstream, multiple model IDs, and optional public aliases mapped to real upstream names.

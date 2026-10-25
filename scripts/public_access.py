@@ -27,7 +27,7 @@ def closing_braces(text):
 def location(port,owner):
     if not 1<=int(port)<=65535:raise ValueError('网关端口无效。')
     return f'''location / {{
-        # Serein public gateway {owner}
+        # Lattice public gateway {owner}
         proxy_pass http://127.0.0.1:{int(port)};
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -52,7 +52,7 @@ def replace_placeholder(text,domain,port,owner):
         if len(roots)!=1:raise ValueError('已有 HTTPS 站点没有唯一的 location /，请先整理该站点。')
         root=roots[0];left=start+root.start();right=pairs[start+root.end()-1]
         previous=text[left:right]
-        managed=f'# Serein public gateway {owner}' in previous
+        managed=f'# Lattice public gateway {owner}' in previous
         placeholder=re.search(r'\breturn\s+(?:404|410)\s*;',previous) and not re.search(r'\b(?:proxy_pass|fastcgi_pass|try_files|alias|root)\b',previous)
         if not managed and not placeholder:raise ValueError('该域名首页已有内容，未覆盖；请使用空闲域名或先将首页设为 404/410。')
         matches.append((left,right))
@@ -77,7 +77,7 @@ def plan(domain,port,deploy,config_dump):
     cert=Path('/etc/letsencrypt/live')/domain
     if not (cert/'fullchain.pem').is_file() or not (cert/'privkey.pem').is_file():
         raise ValueError('未找到该域名的证书，请先用 Certbot 配置证书，或选择 IP／端口入口。')
-    target=Path('/etc/nginx/conf.d')/f'serein-{owner}.conf'
+    target=Path('/etc/nginx/conf.d')/f'lattice-{owner}.conf'
     if target.exists():raise ValueError('同实例的 nginx 文件已存在但未加载，请先检查 nginx include。')
     return target,f'''server {{
     listen 80;
@@ -100,7 +100,7 @@ def apply(target,text,deploy,runner=subprocess.run):
     if before is not None:
         backup=backups/(hashlib.sha256(before).hexdigest()+'.conf')
         if not backup.exists():backup.write_bytes(before);backup.chmod(0o600)
-    temporary=target.with_name(target.name+'.serein-tmp')
+    temporary=target.with_name(target.name+'.lattice-tmp')
     try:
         temporary.write_text(text);temporary.chmod(0o644);temporary.replace(target)
         runner(['nginx','-t'],check=True,capture_output=True)

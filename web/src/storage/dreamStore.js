@@ -67,7 +67,7 @@ async function requestDream(path, body = {}) {
 }
 
 export async function loadDreams() {
-  const payload = await requestDream("/__serein/live/dreams", { limit: 50 });
+  const payload = await requestDream("/__lattice/live/dreams", { limit: 50 });
   const dreams = Array.isArray(payload.records)
     ? payload.records.map(normalizeDream).filter((dream) => dream.id)
     : [];
@@ -82,7 +82,7 @@ export async function loadDreams() {
 }
 
 export async function loadDreamDetail(dreamId) {
-  const payload = await requestDream("/__serein/live/dream-detail", { dreamId });
+  const payload = await requestDream("/__lattice/live/dream-detail", { dreamId });
   return normalizeDream({ ...payload, has_body: true });
 }
 

@@ -3,20 +3,20 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.compat.diaries import Diaries
-from serein.compat.events import Events
-from serein.compat.scenes import Scenes, initialize_scene_ids
-from serein.config import Settings
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.recall.index import build_index
+from lattice.api.http import create_app
+from lattice.compat.diaries import Diaries
+from lattice.compat.events import Events
+from lattice.compat.scenes import Scenes, initialize_scene_ids
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.recall.index import build_index
 from test_live_events import item
 
 
 @pytest.fixture
 def live(tmp_path):
-    settings=Settings(tmp_path/'serein.db',tmp_path/'index.sqlite',writable=True)
+    settings=Settings(tmp_path/'lattice.db',tmp_path/'index.sqlite',writable=True)
     with Store(settings.database):
         pass
     Events(settings.database,initialize=True)
@@ -146,7 +146,7 @@ def test_scene_edit_evidence_and_handoff_picker_use_current_canonical(live):
         assert current['status']==status and current['document']['body_md']==item()['body']
     deleted=client.post('/api/buckets/delete',json={'bucket_ids':[key],'confirm':'DELETE'})
     assert deleted.status_code==200 and deleted.json()['deleted']==1
-    assert client.post('/api/serein/memory-projection',json={}).json()['scenes']==[]
+    assert client.post('/api/lattice/memory-projection',json={}).json()['scenes']==[]
     assert client.get('/v1/memories/'+key).json()['readable'] is False
     deleted=client.post('/api/fact-events/delete',json={'item_id':event})
     assert deleted.status_code==200 and event in deleted.json()['item_ids']

@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "serein"
+name = "lattice"
 version = "0.1.0"
 description = "Authored memories, evidence, and independent surfacing decisions"
 license = {file = "LICENSE"}
@@ -19,16 +19,16 @@ http = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1", "mcp>=1.27,<2
 background = ["openai>=1.60,<3"]
 
 [project.scripts]
-serein = "serein.cli:main"
+lattice = "lattice.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"serein" = ["resources/*.json", "resources/*.md", "resources/agents/*/AGENTS.md"]
-"serein.core" = ["*.sql"]
-"serein.recall.germany" = ["resources/*.json", "resources/stopwords/*.txt", "PROVENANCE.md"]
-"serein.compat.germany" = ["PROVENANCE.md"]
+"lattice" = ["resources/*.json", "resources/*.md", "resources/agents/*/AGENTS.md"]
+"lattice.core" = ["*.sql"]
+"lattice.recall.germany" = ["resources/*.json", "resources/stopwords/*.txt", "PROVENANCE.md"]
+"lattice.compat.germany" = ["PROVENANCE.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

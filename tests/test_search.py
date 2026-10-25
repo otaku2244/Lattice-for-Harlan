@@ -3,9 +3,9 @@ import json
 
 import pytest
 
-from serein.core import Store
-from serein.core.search import Search, build_index, tokens
-from serein.core.store import digest
+from lattice.core import Store
+from lattice.core.search import Search, build_index, tokens
+from lattice.core.store import digest
 
 
 @pytest.fixture

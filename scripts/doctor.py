@@ -1,4 +1,4 @@
-"""Read-only diagnostics for the explicitly selected Serein installation."""
+"""Read-only diagnostics for the explicitly selected Lattice installation."""
 import importlib.util
 import json
 from pathlib import Path
@@ -144,13 +144,13 @@ def diagnose(manager):
     manager.heading('端口与健康检查')
     try:
         values = manager.read_env()
-        port = int(values['SEREIN_PORT'])
+        port = int(values['LATTICE_PORT'])
         ports = [port] + ([int(record['memory_port']), int(record['preview_port'])] if kind == 'local' else [])
         if not all(1 <= p <= 65535 for p in ports) or len(set(ports)) != len(ports):
             raise ValueError('ports')
-        if values.get('SEREIN_BIND') not in ('127.0.0.1', '0.0.0.0'):
+        if values.get('LATTICE_BIND') not in ('127.0.0.1', '0.0.0.0'):
             raise ValueError('bind')
-        report('OK', f'网关监听 {values["SEREIN_BIND"]}:{port}')
+        report('OK', f'网关监听 {values["LATTICE_BIND"]}:{port}')
         probes = [('gateway', port, '/ready')]
         if kind == 'local':
             probes.append(('memory', int(record['memory_port']), '/health'))
@@ -160,7 +160,7 @@ def diagnose(manager):
             except (OSError, ValueError):
                 healthy = False
             report('OK' if healthy else 'FAIL', f'{service} 本机健康检查' + ('通过' if healthy else '失败'), '菜单 4 查看状态／日志；检查端口和启动结果。' if not healthy else '')
-        if values['SEREIN_BIND'] == '127.0.0.1':
+        if values['LATTICE_BIND'] == '127.0.0.1':
             report('INFO', '网关仅本机监听', '其他设备访问用菜单 5 配置入口。')
         else:
             report('INFO', '外部访问还需允许网关端口通过防火墙／云安全组；HTTPS 检查域名和 nginx。')

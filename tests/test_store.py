@@ -2,12 +2,12 @@ import sqlite3
 
 import pytest
 
-from serein.core import Conflict, Store
+from lattice.core import Conflict, Store
 
 
 @pytest.fixture
 def store(tmp_path):
-    with Store(tmp_path / "serein.db") as value:
+    with Store(tmp_path / "lattice.db") as value:
         yield value
 
 
@@ -117,5 +117,5 @@ def test_does_not_adopt_unrelated_database(tmp_path):
     path = tmp_path / "other.db"
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE user_data (id INTEGER)")
-    with pytest.raises(ValueError, match="non-Serein"):
+    with pytest.raises(ValueError, match="non-Lattice"):
         Store(path)

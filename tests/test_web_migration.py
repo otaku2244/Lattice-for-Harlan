@@ -7,12 +7,12 @@ import tarfile
 
 import pytest
 from fastapi.testclient import TestClient
-from serein.api.http import create_app
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.work_tasks import execute,work,status
+from lattice.api.http import create_app
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.work_tasks import execute,work,status
 
 
 def archive():
@@ -28,7 +28,7 @@ def archive():
 
 @pytest.fixture
 def api(tmp_path):
-    settings=Settings(tmp_path/'serein.db',tmp_path/'index.sqlite',writable=True);initialize(settings)
+    settings=Settings(tmp_path/'lattice.db',tmp_path/'index.sqlite',writable=True);initialize(settings)
     # No lifespan worker: tests explicitly run durable queued work without remote services.
     client=TestClient(create_app(settings,token='synthetic',live=True),headers={'Authorization':'Bearer synthetic'})
     yield settings,client
@@ -56,12 +56,12 @@ def test_web_migration_preview_confirm_queue_resume_and_backup(api,monkeypatch,t
     async def refresh(*args, **kwargs):
         assert kwargs['retry_failed'] is True
         return {'cues':{'failed_scenes':[]}}
-    monkeypatch.setattr('serein.legacy_migration.workflow.Migration.tag',tag)
-    monkeypatch.setattr('serein.configured_models.prepare_selected',lambda *args,**kwargs:{'status':'ready'})
-    monkeypatch.setattr('serein.configured_models.effective_settings',lambda s:s)
-    monkeypatch.setattr('serein.recall.legacy_indexes.refresh',refresh)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.Migration.tag',tag)
+    monkeypatch.setattr('lattice.configured_models.prepare_selected',lambda *args,**kwargs:{'status':'ready'})
+    monkeypatch.setattr('lattice.configured_models.effective_settings',lambda s:s)
+    monkeypatch.setattr('lattice.recall.legacy_indexes.refresh',refresh)
     async def forbidden(*args,**kwargs):raise AssertionError('unexpected model call')
-    monkeypatch.setattr('serein.legacy_migration.workflow.complete',forbidden)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.complete',forbidden)
     queued=client.post(route,json=options).json()
     asyncio.run(execute(settings.database,key,lambda:work(settings,key,{}),queued_id=queued['run_id']))
     assert status(settings.database,key)['status']=='completed'
@@ -84,22 +84,22 @@ def test_web_migration_preview_confirm_queue_resume_and_backup(api,monkeypatch,t
 
 def test_imported_edge_cancel_restore_and_body_change(api):
     settings,client=api
-    from serein.legacy_migration.web import upload,read_plan
-    from serein.legacy_migration.workflow import Migration
+    from lattice.legacy_migration.web import upload,read_plan
+    from lattice.legacy_migration.workflow import Migration
     uploaded=upload(settings,archive());plan=read_plan(settings,uploaded['id'])
     migration=Migration(settings,plan,{'user_name':'Mira','ai_name':'Sol'})
     try:
         migration.import_bodies();asyncio.run(migration.edges())
         edge=client.get('/api/scene-edges').json()['edges'][0]
         assert edge['evidence_origin']=='legacy_graph'
-        assert len(client.post('/api/serein/memory-projection',json={}).json()['edges'])==1
+        assert len(client.post('/api/lattice/memory-projection',json={}).json()['edges'])==1
         deleted=client.request('DELETE','/api/scene-edges/'+edge['edge_id'],json={'scene_id':edge['source'],'confirm':'DELETE_SCENE_EDGE'})
         assert deleted.status_code==200,deleted.text
-        assert client.post('/api/serein/memory-projection',json={}).json()['edges']==[]
+        assert client.post('/api/lattice/memory-projection',json={}).json()['edges']==[]
         assert client.post('/api/scene-edges/'+edge['edge_id']+'/restore',json={'confirm':'RESTORE_SCENE_EDGE'}).status_code==200
         with Store(settings.database) as store,store.transaction(immediate=True):
             doc=store.read(edge['source']);store.revise(doc['id'],expected_revision=doc['revision'],title=doc['title'],body_md='正文已改变',metadata=doc['metadata'])
-        assert client.post('/api/serein/memory-projection',json={}).json()['edges']==[]
+        assert client.post('/api/lattice/memory-projection',json={}).json()['edges']==[]
     finally:migration.close()
 
 
@@ -113,15 +113,15 @@ def test_pause_between_items_and_resume_after_page_refresh(api,monkeypatch):
     async def tag(self,item,feedback=''):
         calls.append(item['old_id'])
         if len(calls)==1:
-            from serein.work_tasks import pause
+            from lattice.work_tasks import pause
             pause(settings.database,key)
     async def refresh(*args, **kwargs):
         assert kwargs['retry_failed'] is True
         return {'cues':{'failed_scenes':[]}}
-    monkeypatch.setattr('serein.legacy_migration.workflow.Migration.tag',tag)
-    monkeypatch.setattr('serein.configured_models.prepare_selected',lambda *args,**kwargs:{'status':'ready'})
-    monkeypatch.setattr('serein.configured_models.effective_settings',lambda s:s)
-    monkeypatch.setattr('serein.recall.legacy_indexes.refresh',refresh)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.Migration.tag',tag)
+    monkeypatch.setattr('lattice.configured_models.prepare_selected',lambda *args,**kwargs:{'status':'ready'})
+    monkeypatch.setattr('lattice.configured_models.effective_settings',lambda s:s)
+    monkeypatch.setattr('lattice.recall.legacy_indexes.refresh',refresh)
     queued=client.post(route,json=options).json()
     asyncio.run(execute(settings.database,key,lambda:work(settings,key,{}),queued_id=queued['run_id']))
     item=client.get('/v1/migration').json()['items'][0]
@@ -137,7 +137,7 @@ def test_pause_between_items_and_resume_after_page_refresh(api,monkeypatch):
 
 def test_parallel_upload_rejected_with_useful_conflict(api):
     settings,client=api
-    from serein.file_lock import exclusive_lock
+    from lattice.file_lock import exclusive_lock
     with exclusive_lock(settings.database.parent/'migrations'/'operation.lock'):
         response=client.post('/v1/migration/preview',json={'content':archive()})
         assert response.status_code==409
@@ -149,7 +149,7 @@ def test_path_preview_uses_read_only_server_source_and_rechecks_before_work(api,
     bucket=old/'buckets'/'dynamic';bucket.mkdir(parents=True)
     file=bucket/'one.md';file.write_text('---\nid: old-one\nname: 旧约定\n---\n一起去书店。','utf-8')
     original=file.read_bytes()
-    monkeypatch.setenv('SEREIN_MIGRATION_PATH_ROOT',str(old))
+    monkeypatch.setenv('LATTICE_MIGRATION_PATH_ROOT',str(old))
     response=client.post('/v1/migration/preview-path',json={'path':str(old),'display_path':'/host/old-ombre'})
     assert response.status_code==200,response.text
     identifier=response.json()['id']
@@ -159,5 +159,5 @@ def test_path_preview_uses_read_only_server_source_and_rechecks_before_work(api,
     assert client.post('/v1/migration/preview-path',json={'path':str(settings.database.parent)}).status_code==400
     assert client.post('/v1/migration/preview-path',json={'path':'relative/buckets'}).status_code==400
     file.write_text('---\nid: old-one\nname: 旧约定\n---\n后来改了。','utf-8')
-    from serein.legacy_migration.web import run
+    from lattice.legacy_migration.web import run
     with pytest.raises(ValueError,match='预览后发生变化'):run(settings,identifier)

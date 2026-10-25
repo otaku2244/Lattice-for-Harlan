@@ -3,9 +3,9 @@ from contextlib import closing
 
 import pytest
 
-from serein.compat.events import Events
-from serein.core import Store
-from serein.core.reader import Reader
+from lattice.compat.events import Events
+from lattice.core import Store
+from lattice.core.reader import Reader
 
 
 def item(body='一起看雨', origin='assistant_bridge:test'):
@@ -17,7 +17,7 @@ def item(body='一起看雨', origin='assistant_bridge:test'):
 
 @pytest.fixture
 def events(tmp_path):
-    database = tmp_path/'serein.db'
+    database = tmp_path/'lattice.db'
     with Store(database):
         pass
     return Events(database, initialize=True)
@@ -47,7 +47,7 @@ def test_event_write_replay_edit_and_read_share_transaction(events):
 def test_projection_failure_rolls_back_canonical_event_and_receipt(events,monkeypatch):
     def fail(_conn):
         raise ValueError('projection failed')
-    monkeypatch.setattr('serein.compat.events.project_events',fail)
+    monkeypatch.setattr('lattice.compat.events.project_events',fail)
     with pytest.raises(ValueError,match='projection failed'):
         events.write_many([item()])
     with sqlite3.connect(events.db_path) as conn:

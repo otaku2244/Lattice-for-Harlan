@@ -11,14 +11,14 @@ scene_linker:
     - name: configured-relations
       model: your-model
       base_url: https://models.example/v1
-      api_key_env: SEREIN_SCENE_LINKER_API_KEY
+      api_key_env: LATTICE_SCENE_LINKER_API_KEY
 dream:
   enabled: true
   auto_enabled: true
   model: your-model
   base_url: https://models.example/v1
   timezone: UTC
-  # Set SEREIN_DREAM_API_KEY in the host environment.
+  # Set LATTICE_DREAM_API_KEY in the host environment.
 narrative_rolls:
   revision_scan_enabled: true
   revision_scan_timezone: Asia/Shanghai

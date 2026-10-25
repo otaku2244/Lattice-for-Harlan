@@ -6,7 +6,7 @@ import {join,resolve,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 
-const webRoot=resolve(process.env.SEREIN_WEB_ROOT||process.cwd());
+const webRoot=resolve(process.env.LATTICE_WEB_ROOT||process.cwd());
 const require=createRequire(join(webRoot,'package.json'));
 const {build}=require('esbuild'),{JSDOM}=require('jsdom');
 const dom=new JSDOM('<div id="root"></div>',{url:'http://synthetic.invalid',pretendToBeVisual:true});
@@ -26,10 +26,10 @@ globalThis.fetch=async(url,options={})=>{
   if(url.endsWith('/rebuild'))result={status:'rebuilt'};
   else if(url.endsWith('/retry-batch'))result={status:'resumed'};
   else if(url.endsWith('/next'))result={status:'queued',stage:'queued'};
-  else assert.equal(url,'/__serein/pipeline/status');
+  else assert.equal(url,'/__lattice/pipeline/status');
   return {ok:true,json:async()=>structuredClone(result)};
 };
-const directory=await mkdtemp(join(tmpdir(),'serein-recovery-dom-'));
+const directory=await mkdtemp(join(tmpdir(),'lattice-recovery-dom-'));
 const output=await build({stdin:{contents:`import React,{act} from 'react';import {createRoot} from 'react-dom/client';import {PipelineSettings} from './src/components/PipelineSettings.jsx';export {act};export function mount(){const root=createRoot(document.getElementById('root'));root.render(<PipelineSettings onOpenSummary={()=>{}}/>);return root;}`,resolveDir:webRoot,loader:'jsx'},
   jsx:'automatic',bundle:true,platform:'node',format:'esm',write:false,define:{'process.env.NODE_ENV':'"development"'},
   plugins:[{name:'synthetic-children',setup(build){

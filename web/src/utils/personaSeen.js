@@ -1,4 +1,4 @@
-const prefix = 'serein.persona.seen.v1:';
+const prefix = 'lattice.persona.seen.v1:';
 const memory = new Map();
 
 export function readPersonaSeen(scope, storage = window.localStorage) {

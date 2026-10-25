@@ -71,10 +71,10 @@ def run(args,**kwargs):return subprocess.run(args,check=True,**kwargs)
 def compose(*args,**kwargs):
     source=installation().get('legacy_source_root')
     host_source=source or str(DEPLOY/'runtime'/'legacy-input')
-    return run(['docker','compose','-p',installation().get('compose_project','serein-public'),'--project-directory',str(DEPLOY),
-        '-f',str(DEPLOY/'compose.yaml'),*args],env={**os.environ,'SEREIN_INSTALL_ROOT':str(ROOT),
-        'SEREIN_LEGACY_SOURCE':host_source,'SEREIN_LEGACY_SOURCE_HOST':host_source,
-        'SEREIN_LEGACY_SOURCE_CONFIGURED':'1' if source else '0'},**kwargs)
+    return run(['docker','compose','-p',installation().get('compose_project','lattice-public'),'--project-directory',str(DEPLOY),
+        '-f',str(DEPLOY/'compose.yaml'),*args],env={**os.environ,'LATTICE_INSTALL_ROOT':str(ROOT),
+        'LATTICE_LEGACY_SOURCE':host_source,'LATTICE_LEGACY_SOURCE_HOST':host_source,
+        'LATTICE_LEGACY_SOURCE_CONFIGURED':'1' if source else '0'},**kwargs)
 
 
 def installation():
@@ -101,7 +101,7 @@ def select_environment():
         print('需要 Python 3.11+、Node.js 22.12+ 和 npm；脚本会创建独立虚拟环境、安装依赖并构建页面。')
         print('Termux：pkg install python nodejs-lts git clang make rust pkg-config；将发行目录放在 Termux HOME 内。')
         print('手机长期运行请允许 Termux 后台运行；可自行执行 termux-wake-lock，结束后 termux-wake-unlock。')
-    project='serein-public-'+hashlib.sha256(str(DEPLOY.resolve()).encode()).hexdigest()[:10]
+    project='lattice-public-'+hashlib.sha256(str(DEPLOY.resolve()).encode()).hexdigest()[:10]
     private_file(DEPLOY/'installation.json',json.dumps({'backend':'local' if choice=='3' else 'docker','compose_project':project}))
 
 
@@ -158,8 +158,8 @@ def backup_runtime():
 
 def check_memory():
     """Read the installed runtime's policy inputs, without invoking providers."""
-    code=('import json,sys; from serein.config import load_settings; '
-          'from serein.configured_models import memory_status; '
+    code=('import json,sys; from lattice.config import load_settings; '
+          'from lattice.configured_models import memory_status; '
           'print(json.dumps(memory_status(load_settings(sys.argv[1]))))')
     try:
         if backend()=='docker':
@@ -246,7 +246,7 @@ def prepare():
     if not config.exists():
         text=(ROOT/'config.example.toml').read_text('utf-8')
         data='./runtime' if backend()=='local' else '/data'
-        text=text.replace('./.runtime/serein.db',data+'/serein.db').replace('./.runtime/recall-index.sqlite',data+'/recall-index.sqlite')
+        text=text.replace('./.runtime/lattice.db',data+'/lattice.db').replace('./.runtime/recall-index.sqlite',data+'/recall-index.sqlite')
         config.write_text(text,'utf-8')
     if not (DEPLOY/'.env').exists():
         while True:
@@ -254,13 +254,13 @@ def prepare():
             if bind in ('0.0.0.0','127.0.0.1'):break
             print('请填 0.0.0.0 或 127.0.0.1。')
         port=port_prompt('网关端口',18217)
-        private_file(DEPLOY/'.env',f'SEREIN_BIND={bind}\nSEREIN_PORT={port}\n')
+        private_file(DEPLOY/'.env',f'LATTICE_BIND={bind}\nLATTICE_PORT={port}\n')
     values=read_env();saved_public_url=installation().get('public_url','')
-    if 'SEREIN_PUBLIC_ORIGIN' not in values and saved_public_url.startswith('https://'):
-        private_file(DEPLOY/'.env',''.join(f'{k}={v}\n' for k,v in {**values,'SEREIN_PUBLIC_ORIGIN':saved_public_url}.items()))
+    if 'LATTICE_PUBLIC_ORIGIN' not in values and saved_public_url.startswith('https://'):
+        private_file(DEPLOY/'.env',''.join(f'{k}={v}\n' for k,v in {**values,'LATTICE_PUBLIC_ORIGIN':saved_public_url}.items()))
     record=installation()
     if backend()=='local' and 'memory_port' not in record:
-        port=int(read_env()['SEREIN_PORT'])
+        port=int(read_env()['LATTICE_PORT'])
         record['memory_port']=port_prompt('内部记忆服务端口（仅本机）',18218,[port])
         record['preview_port']=port_prompt('内部页面服务端口（仅本机）',18219,[port,record['memory_port']])
         private_file(DEPLOY/'installation.json',json.dumps(record))
@@ -273,7 +273,7 @@ def read_env():
 def configure_client():
     record=installation()
     if 'client_host' in record:return
-    if read_env().get('SEREIN_BIND')=='127.0.0.1':host='127.0.0.1'
+    if read_env().get('LATTICE_BIND')=='127.0.0.1':host='127.0.0.1'
     elif confirm('客户端就在这台电脑／手机上吗'):host='127.0.0.1'
     else:
         while True:
@@ -288,7 +288,7 @@ def url():
     if installation().get('public_url'):return installation()['public_url']
     port='18217'
     for line in (DEPLOY/'.env').read_text().splitlines():
-        if line.startswith('SEREIN_PORT='):port=line.split('=',1)[1]
+        if line.startswith('LATTICE_PORT='):port=line.split('=',1)[1]
     host=installation().get('client_host','127.0.0.1')
     if ':' in host:host='['+host+']'
     return 'http://'+host+':'+port
@@ -297,10 +297,10 @@ def url():
 def container_command(*args,source=None):
     if backend()=='local':
         translated=[str(source) if value=='/legacy/input' else str(DEPLOY/'runtime'/'migration-options.json') if value=='/data/migration-options.json' else value for value in args]
-        return run([str(local_python()),'-m','serein.legacy_migration','--config',str(DEPLOY/'config.toml'),*translated],cwd=ROOT)
+        return run([str(local_python()),'-m','lattice.legacy_migration','--config',str(DEPLOY/'config.toml'),*translated],cwd=ROOT)
     extra=[] if source is None else ['-v',str(source)+':/legacy/input:ro']
     return compose('run','--rm','--no-deps',*extra,'--entrypoint','python','memory',
-        '-m','serein.legacy_migration','--config','/config/config.toml',*args)
+        '-m','lattice.legacy_migration','--config','/config/config.toml',*args)
 
 
 def stop_old(source):
@@ -315,7 +315,7 @@ def stop_old(source):
     rows=json.loads(subprocess.check_output(['docker','inspect',*ids],text=True)) if ids else []
     names=[]
     for row in rows:
-        if (row.get('Config',{}).get('Labels') or {}).get('com.docker.compose.project')==installation().get('compose_project','serein-public'):continue
+        if (row.get('Config',{}).get('Labels') or {}).get('com.docker.compose.project')==installation().get('compose_project','lattice-public'):continue
         for mount in row.get('Mounts',[]):
             if mount.get('Type')!='bind':continue
             path=Path(mount['Source']).resolve()
@@ -334,10 +334,10 @@ def stop_old(source):
 
 def deploy():
     print('开始前：请将发行目录放在持久目录，不要放在 /tmp。小内存设备请先手动停止同机旧服务，为构建留出资源；从备份迁移不会自动停旧服务。')
-    choice=choose('部署 Serein',[('0','从旧 Ombre 记忆库迁移'),('1','全新安装／重新部署')],default='1',back=True)
+    choice=choose('部署 Lattice',[('0','从旧 Ombre 记忆库迁移'),('1','全新安装／重新部署')],default='1',back=True)
     if choice=='r':return
     backup=True
-    if choice=='1' and (DEPLOY/'runtime'/'serein.db').is_file():
+    if choice=='1' and (DEPLOY/'runtime'/'lattice.db').is_file():
         selection=choose('更新前是否备份',[('1','先备份再更新（默认）'),('0','跳过备份直接更新')],default='1',back=True)
         if selection=='r':return
         backup=selection=='1'
@@ -399,11 +399,11 @@ def connection_guide():
     except (OSError,ValueError):
         guide+='访问地址未读取：deploy/.env 或安装记录缺失、不可读或格式有误。已有实例请沿用原来的页面、聊天 API 和 MCP 地址，只更新客户端 Key。\n'
     else:
-        guide+=f'页面：{address}\n聊天 Base URL：{address}/v1\nMCP 地址：{address}/serein/mcp\n'
+        guide+=f'页面：{address}\n聊天 Base URL：{address}/v1\nMCP 地址：{address}/lattice/mcp\n'
     guide+='API 密钥文件：deploy/secrets/api-token（不是页面密码）\n同机使用 127.0.0.1；手机连电脑填电脑的局域网 IP，并允许网关端口通过防火墙。\n公网入口可在主菜单 5 配置，页面密码和 API 鉴权保持启用。\n'
-    guide+='传输类型：Streamable HTTP\nMCP OAuth：HTTPS 域名入口选择 OAuth，在 Serein 授权页输入上方 Gateway Key\nMCP 静态方式：Authorization: Bearer <上方 Gateway Key>（用于支持自定义请求头的客户端）\n'
+    guide+='传输类型：Streamable HTTP\nMCP OAuth：HTTPS 域名入口选择 OAuth，在 Lattice 授权页输入上方 Gateway Key\nMCP 静态方式：Authorization: Bearer <上方 Gateway Key>（用于支持自定义请求头的客户端）\n'
     guide+='聊天经过此网关且开启“开窗续接”时，可发送 /resume 后面想继续聊的话；指令和接续材料由网关处理，不经过 MCP 工具返回。\n'
-    guide+='在客户端添加请求头 X-Serein-Window-ID，值为当前会话 ID（例如 chat-001）；同一会话不变，新窗口换值。\n不填则使用默认会话 main，共用提醒轮次与召回冷却，不自动识别新窗口。固定值也不能区分窗口；开窗续接请在经过此网关的聊天中发送 /resume。\n'
+    guide+='在客户端添加请求头 X-Lattice-Window-ID，值为当前会话 ID（例如 chat-001）；同一会话不变，新窗口换值。\n不填则使用默认会话 main，共用提醒轮次与召回冷却，不自动识别新窗口。固定值也不能区分窗口；开窗续接请在经过此网关的聊天中发送 /resume。\n'
     print(guide,end='')
     try:
         private_file(DEPLOY/'connection-guide.txt',guide)
@@ -436,7 +436,7 @@ def access():
     if choice=='r':return
     spec=importlib.util.spec_from_file_location('public_access',ROOT/'scripts'/'public_access.py')
     helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
-    record=installation();values=read_env();port=int(values['SEREIN_PORT']);proxy=None
+    record=installation();values=read_env();port=int(values['LATTICE_PORT']);proxy=None
     if record.get('public_url','').startswith('https://') and choice!='2':
         raise ValueError('该实例已有 HTTPS 代理；请先移除 nginx 中对应的入口，再切换为 IP 或仅本机。')
     if choice=='2':
@@ -459,8 +459,8 @@ def access():
     else:bind='127.0.0.1';client_host='127.0.0.1';public_url=''
     if not confirm('应用此访问入口（保留数据、页面密码和 API 密钥）'):return
     oauth_origin=public_url if public_url else ''
-    before=(DEPLOY/'.env').read_text();updated={**values,'SEREIN_BIND':bind,'SEREIN_PUBLIC_ORIGIN':oauth_origin}
-    env_changed=values.get('SEREIN_BIND')!=bind or values.get('SEREIN_PUBLIC_ORIGIN','')!=oauth_origin
+    before=(DEPLOY/'.env').read_text();updated={**values,'LATTICE_BIND':bind,'LATTICE_PUBLIC_ORIGIN':oauth_origin}
+    env_changed=values.get('LATTICE_BIND')!=bind or values.get('LATTICE_PUBLIC_ORIGIN','')!=oauth_origin
     try:
         if env_changed:
             private_file(DEPLOY/'.env',''.join(f'{k}={v}\n' for k,v in updated.items()))
@@ -481,7 +481,7 @@ def access():
 def maintenance():
     choice=choose('向量重建与清理',[('0','补齐缺失向量'),('1','重建当前模型的全部向量'),('2','清理孤立的派生向量')],default='0',back=True)
     if choice=='r':return
-    print('只操作当前 Serein 的派生索引，正文和原库不删除。补齐／重建会调用嵌入模型。')
+    print('只操作当前 Lattice 的派生索引，正文和原库不删除。补齐／重建会调用嵌入模型。')
     if not confirm('开始维护'):return
     service_action('stop')
     try:container_command('vectors','--mode',{'0':'fill','1':'rebuild','2':'clean'}[choice])
@@ -597,7 +597,7 @@ def legacy_source_access():
 
 
 def doctor():
-    helper_spec=importlib.util.spec_from_file_location('serein_doctor',ROOT/'scripts'/'doctor.py')
+    helper_spec=importlib.util.spec_from_file_location('lattice_doctor',ROOT/'scripts'/'doctor.py')
     helper=importlib.util.module_from_spec(helper_spec);helper_spec.loader.exec_module(helper)
     return helper.diagnose(sys.modules[__name__])
 
@@ -606,14 +606,14 @@ def main():
     while True:
         try:
             print(f'\n安装目录：{ROOT}\n实例数据：{DEPLOY / "runtime"}')
-            choice=choose('Serein · 安装与维护',[
-                ('0','设置前端用户名／密码'),('1','拉取上游代码并重建' if (DEPLOY/'config.toml').is_file() else '安装 Serein（全新安装／旧库迁移）'),('2','重启服务'),('3','向量重建与清理'),('4','启动／停止／状态／日志'),('5','访问入口：本机／局域网／公网'),('6','更换 Gateway Key'),('7','网页旧库目录只读授权'),('8','旧边转换补救（早期版本未转换成功）'),('9','旧备份清理'),('10','历史数据补漏（梦境／窗影／日记／暗房）'),('11','旧 Scene 补 cues'),('12','故障排查（环境／配置／服务／日志）'),('q','退出')])
+            choice=choose('Lattice · 安装与维护',[
+                ('0','设置前端用户名／密码'),('1','拉取上游代码并重建' if (DEPLOY/'config.toml').is_file() else '安装 Lattice（全新安装／旧库迁移）'),('2','重启服务'),('3','向量重建与清理'),('4','启动／停止／状态／日志'),('5','访问入口：本机／局域网／公网'),('6','更换 Gateway Key'),('7','网页旧库目录只读授权'),('8','旧边转换补救（早期版本未转换成功）'),('9','旧备份清理'),('10','历史数据补漏（梦境／窗影／日记／暗房）'),('11','旧 Scene 补 cues'),('12','故障排查（环境／配置／服务／日志）'),('q','退出')])
             if choice=='q':return
             if choice=='12':
                 doctor()
                 pause()
                 continue
-            spec=importlib.util.spec_from_file_location('installer_lock',ROOT/'src'/'serein'/'file_lock.py')
+            spec=importlib.util.spec_from_file_location('installer_lock',ROOT/'src'/'lattice'/'file_lock.py')
             locks=importlib.util.module_from_spec(spec);spec.loader.exec_module(locks)
             with locks.exclusive_lock(DEPLOY/'runtime'/'installer.lock'):
                 if choice=='0':auth()

@@ -1,8 +1,8 @@
 import { initializePersonal } from "./personalStore.js";
-const memoryScenesStorageKey = "serein.memory.scene-records.v1";
-const retiredMemorySnapshotStorageKey = "serein.memory.snapshot.v1";
-const memoryLiveCacheAtStorageKey = "serein.memory.live-cache-at.v1";
-const memorySceneTombstonesStorageKey = "serein.memory.scene-tombstones.v1";
+const memoryScenesStorageKey = "lattice.memory.scene-records.v1";
+const retiredMemorySnapshotStorageKey = "lattice.memory.snapshot.v1";
+const memoryLiveCacheAtStorageKey = "lattice.memory.live-cache-at.v1";
+const memorySceneTombstonesStorageKey = "lattice.memory.scene-tombstones.v1";
 const memoryLiveCacheMaxAgeMs = 5 * 60 * 1000;
 let memorySnapshotLoadInFlight = null;
 
@@ -59,7 +59,7 @@ function mergeLiveMemoryProjection(snapshotScenes, liveProjection, { includeSnap
     const body = splitParagraphs(liveScene.content);
     const sources = fallback?.sources?.length
       ? fallback.sources
-      : [{ id: `manual_source:${sourceId}`, kind: "Serein v1 原文", title: `只读来源 · ${sourceId}` }];
+      : [{ id: `manual_source:${sourceId}`, kind: "Lattice v1 原文", title: `只读来源 · ${sourceId}` }];
     sceneIdBySourceId.set(sourceId, sceneId);
     mergedById.set(sceneId, {
       ...fallback,
@@ -85,7 +85,7 @@ function mergeLiveMemoryProjection(snapshotScenes, liveProjection, { includeSnap
       statusConsistent: liveScene.status_consistent !== false,
       bucketDomain: String(liveScene.bucket_domain || fallback?.bucketDomain || ""),
       selfAnchor: liveScene.self_anchor === true,
-      sourceKind: "serein-live-readonly",
+      sourceKind: "lattice-live-readonly",
       canonicalSceneId: sourceId,
       sourceUpdatedAt: String(liveScene.updated_at || "").trim(),
       sourceRevision: [liveScene.updated_at, liveScene.content_hash]
@@ -201,7 +201,7 @@ export function readMemoryScenes() {
     const saved = JSON.parse(window.localStorage.getItem(memoryScenesStorageKey));
     if (!Array.isArray(saved)) return [];
     return saved
-      .filter((scene) => scene?.sourceKind === "serein-live-readonly")
+      .filter((scene) => scene?.sourceKind === "lattice-live-readonly")
       .map((scene) => normalizeMemoryScene(scene, scene))
       .filter((scene) => (
         scene?.id
@@ -226,7 +226,7 @@ async function loadMemorySnapshotOnce() {
 
   let liveProjection = null;
   try {
-    const liveResponse = await fetch("/__serein/live/memory-scenes", {
+    const liveResponse = await fetch("/__lattice/live/memory-scenes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceIds: [] }),
@@ -257,11 +257,11 @@ async function loadMemorySnapshotOnce() {
     const tombstonedSceneIds = readMemorySceneTombstones();
     const scenes = projectedScenes
       .filter((scene) => (
-        scene.sourceKind === "serein-live-readonly" || !tombstonedSceneIds.has(scene.id)
+        scene.sourceKind === "lattice-live-readonly" || !tombstonedSceneIds.has(scene.id)
       ))
       .map((scene) => {
         const storedScene = savedById.get(scene.id);
-        if (scene.sourceKind === "serein-live-readonly") {
+        if (scene.sourceKind === "lattice-live-readonly") {
           return normalizeMemoryScene(
             {
               ...scene,

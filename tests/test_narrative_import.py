@@ -5,10 +5,10 @@ import sqlite3
 
 import pytest
 
-from serein.core import Store, Conflict
-from serein.core.store import digest, encode
-from serein.ingest.legacy_narrative import import_narratives
-from serein.ingest.narrative_snapshot import export_narratives
+from lattice.core import Store, Conflict
+from lattice.core.store import digest, encode
+from lattice.ingest.legacy_narrative import import_narratives
+from lattice.ingest.narrative_snapshot import export_narratives
 
 
 def artifact(path, value):
@@ -38,7 +38,7 @@ def narrative_snapshot():
              artifact("docs/old.md", old), artifact(roll["source_file"], current),
              artifact("revisions/narrative_one/unregistered.md", b"Not a published revision"),
              artifact("uploads/blobs/one.bin", upload)]
-    return {"format": "serein-narrative-snapshot-v1", "origin": "test", "files": files,
+    return {"format": "lattice-narrative-snapshot-v1", "origin": "test", "files": files,
             "arc_event_links": [{"arc_key": "project:test", "event_id": "event_appended", "linked_at": "original"}]}
 
 

@@ -244,7 +244,7 @@ export function BasementRecallObservation() {
         await initializePersonal();
         const rows = await loadPersonalScope('recall_review');
         if (cancelled) return;
-        window.localStorage.setItem('serein.basement.recall-observation-review.v1', JSON.stringify(Object.fromEntries(rows.map(row => [row.key, row.value]))));
+        window.localStorage.setItem('lattice.basement.recall-observation-review.v1', JSON.stringify(Object.fromEntries(rows.map(row => [row.key, row.value]))));
         setManualSimulations(readRecallSimulationTrainingLabels());
       } catch (error) { if (!cancelled) setExportNotice(error.message); }
       if (!cancelled) { setReviews(readRecallObservationReviews()); setReviewsReady(true); }
@@ -254,8 +254,8 @@ export function BasementRecallObservation() {
 
   useEffect(() => {
     const refreshManualSimulations = () => setManualSimulations(readRecallSimulationTrainingLabels());
-    window.addEventListener("serein:recall-simulation-training-updated", refreshManualSimulations);
-    return () => window.removeEventListener("serein:recall-simulation-training-updated", refreshManualSimulations);
+    window.addEventListener("lattice:recall-simulation-training-updated", refreshManualSimulations);
+    return () => window.removeEventListener("lattice:recall-simulation-training-updated", refreshManualSimulations);
   }, []);
 
   useEffect(() => {
@@ -263,7 +263,7 @@ export function BasementRecallObservation() {
     const hydrateDraftRoutes = async () => {
       try {
         const [publishedResponse, serverState] = await Promise.all([
-          fetch("/__serein/gateway/semantic-routes"),
+          fetch("/__lattice/gateway/semantic-routes"),
           readServerSemanticRouteDraft(),
         ]);
         const published = await publishedResponse.json();
@@ -483,7 +483,7 @@ export function BasementRecallObservation() {
     const anchor = document.createElement("a");
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     anchor.href = url;
-    anchor.download = `serein-recall-training-${stamp}.json`;
+    anchor.download = `lattice-recall-training-${stamp}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

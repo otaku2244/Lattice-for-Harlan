@@ -41,7 +41,7 @@ def cleanup(deploy, plan):
 
 def snapshot(deploy):
     deploy=Path(deploy).resolve()
-    if not (deploy/'runtime'/'serein.db').is_file():return None
+    if not (deploy/'runtime'/'lattice.db').is_file():return None
     folder=deploy/'backups';folder.mkdir(exist_ok=True)
     target=folder/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]+'.tar.gz')
     pending=target.with_suffix('.pending')

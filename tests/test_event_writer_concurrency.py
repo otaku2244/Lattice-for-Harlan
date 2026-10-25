@@ -4,10 +4,10 @@ import json
 import pytest
 
 from test_public_features import settings, output_for
-from serein.compat.raw_archive import raw_archive
-from serein.core.store import Store
-from serein.deployment import read_settings, save_settings
-from serein.extensions import pipeline as p
+from lattice.compat.raw_archive import raw_archive
+from lattice.core.store import Store
+from lattice.deployment import read_settings, save_settings
+from lattice.extensions import pipeline as p
 
 
 def split_curator_output(request):

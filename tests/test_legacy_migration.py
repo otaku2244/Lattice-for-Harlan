@@ -6,15 +6,15 @@ import tarfile
 
 import pytest
 
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store, digest
-from serein.deployment import read_settings, save_settings
-from serein.legacy_migration.scan import clean_body, is_daily_impression, is_old_self_anchor, scan, unpack
-from serein.legacy_migration.models import import_models
-from serein.legacy_migration.workflow import Migration, validate_cues
-from serein.legacy_migration.cues import preview as cue_preview, run as repair_cues
-from serein.legacy_migration.vectors import reuse_legacy, maintain
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store, digest
+from lattice.deployment import read_settings, save_settings
+from lattice.legacy_migration.scan import clean_body, is_daily_impression, is_old_self_anchor, scan, unpack
+from lattice.legacy_migration.models import import_models
+from lattice.legacy_migration.workflow import Migration, validate_cues
+from lattice.legacy_migration.cues import preview as cue_preview, run as repair_cues
+from lattice.legacy_migration.vectors import reuse_legacy, maintain
 
 
 def legacy(root, group, key, body):
@@ -110,7 +110,7 @@ def test_changed_source_is_not_silently_imported_as_another_batch(setup):
 def test_vector_cleanup_removes_orphans_without_canonical_writes(setup):
     settings,_,_,migration=setup;migration.import_bodies()
     save_settings(settings.database,{'assignments':{'embedding':'','reranker':''}})
-    from serein.recall.index import refresh_index
+    from lattice.recall.index import refresh_index
     refresh_index(settings.database,settings.index,set(migration.ids.values()))
     with sqlite3.connect(settings.index) as conn:
         conn.execute('INSERT INTO vectors VALUES (?,?,?)',('orphan','[1,0]',2))
@@ -160,7 +160,7 @@ def test_named_cues_are_dropped_without_retry_while_entities_are_saved(setup,mon
         if 'Mira' in data['content']:
             entities=[{'name':'Mira','type':'person','supports':[{'source_id':material['source_id'],'quote':'Mira 约好周六去青禾书店。'}]}]
         return response({'domain':'life','entities':entities,'cues':['Mira 的书店约定'] if len(calls)==1 else ['周六书店约定']})
-    monkeypatch.setattr('serein.legacy_migration.workflow.complete',complete)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.complete',complete)
     asyncio.run(migration.tag_all());asyncio.run(migration.tag_all())
     assert len(calls)==2 and all('validation_feedback' not in call for call in calls)
     with Store(settings.database) as store:
@@ -191,7 +191,7 @@ def test_explicit_cue_repair_finishes_pending_and_preserves_completed_metadata(s
             return response({'cues':['周六书店约定']})
         assert 'materials' in json.loads(payload['messages'][1]['content'])
         return response({'domain':'life','entities':[],'cues':['书店如约见面']})
-    monkeypatch.setattr('serein.legacy_migration.cues.complete',complete)
+    monkeypatch.setattr('lattice.legacy_migration.cues.complete',complete)
     assert cue_preview(settings.database)['candidates']==2
     result=asyncio.run(repair_cues(settings))
     assert result['completed']==2 and result['cues_only']==1 and result['full_tagging']==1
@@ -209,14 +209,14 @@ def test_explicit_cue_repair_drops_named_cue_without_retry(setup,monkeypatch):
     async def complete(model,payload):
         data=json.loads(payload['messages'][1]['content']);calls.append(data)
         return response({'domain':'life','entities':[],'cues':['Mira 的书店'] if len(calls)==1 else ['周六书店约定']})
-    monkeypatch.setattr('serein.legacy_migration.cues.complete',complete)
+    monkeypatch.setattr('lattice.legacy_migration.cues.complete',complete)
     result=asyncio.run(repair_cues(settings))
     assert len(calls)==2 and result['completed']==2 and result['empty']==1
     assert all('validation_feedback' not in call for call in calls)
 
 
 def test_tagging_retry_errors_never_echo_arbitrary_provider_content():
-    from serein.legacy_migration.workflow import tagging_failure
+    from lattice.legacy_migration.workflow import tagging_failure
     assert tagging_failure(ValueError('provider response with synthetic-secret'))=='模型请求或输出校验失败'
     assert tagging_failure(ValueError('Upstream returned HTTP 429'))=='模型请求或输出校验失败'
     assert tagging_failure(json.JSONDecodeError('secret details','private response',0))=='模型未返回有效 JSON'
@@ -242,9 +242,9 @@ def test_cues_opt_out_preserves_saved_cues_and_does_not_schedule_paid_backfill(s
         data=json.loads(payload['messages'][1]['content']);assert 'forbidden_names' not in data
         calls.append(data)
         return response({'domain':'life','entities':[],**extra})
-    monkeypatch.setattr('serein.legacy_migration.workflow.complete',complete)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.complete',complete)
     async def forbidden(*args,**kwargs):raise AssertionError('Unexpected automatic model call')
-    monkeypatch.setattr('serein.model_runtime.complete',forbidden)
+    monkeypatch.setattr('lattice.model_runtime.complete',forbidden)
     try:
         asyncio.run(resumed.tag_all());asyncio.run(resumed.tag_all())
         assert len(calls)==2 and resumed.ids['a']==key
@@ -255,7 +255,7 @@ def test_cues_opt_out_preserves_saved_cues_and_does_not_schedule_paid_backfill(s
             assert not doc['metadata'].get('legacy_cues_rebuilt')
             assert doc['metadata']['canonical_domain']=='life'
             assert store.read(resumed.ids['b'])['metadata']['scene_cues']==[]
-        from serein.import_tagging import process
+        from lattice.import_tagging import process
         asyncio.run(process(settings.database))
     finally:resumed.close()
 
@@ -268,7 +268,7 @@ def test_disable_cues_after_failure_keeps_successes_and_clears_cue_feedback(setu
         if len(calls)==2:return response({'domain':'life','entities':[],'cues':'invalid'})
         assert 'validation_feedback' not in data and 'forbidden_names' not in data
         return response({'domain':'life','entities':[]})
-    monkeypatch.setattr('serein.legacy_migration.workflow.complete',complete)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.complete',complete)
     with pytest.raises(ValueError,match='停止自动重试'):asyncio.run(migration.tag_all())
     with Store(settings.database) as store:before=store.read(migration.ids['a'])
     resumed=Migration(settings,plan,{**migration.options,'generate_cues':False})
@@ -315,10 +315,10 @@ def test_model_import_reentry_preserves_grouped_legacy_routes(setup):
 def test_edges_convert_without_model_and_do_not_repeat(setup,monkeypatch):
     settings,_,_,migration=setup;migration.import_bodies()
     async def forbidden(*args):raise AssertionError('edge conversion must not call a model')
-    monkeypatch.setattr('serein.legacy_migration.workflow.complete',forbidden)
+    monkeypatch.setattr('lattice.legacy_migration.workflow.complete',forbidden)
     asyncio.run(migration.edges());asyncio.run(migration.edges())
-    from serein.compat.germany.scene_linker import SceneEdgeStore
-    edges=SceneEdgeStore({'serein_database':str(settings.database)},create=False).list_edges()
+    from lattice.compat.germany.scene_linker import SceneEdgeStore
+    edges=SceneEdgeStore({'lattice_database':str(settings.database)},create=False).list_edges()
     assert edges==[]
     report=migration.report()
     assert report['edge']=={'held':1}
@@ -329,7 +329,7 @@ def test_edges_convert_without_model_and_do_not_repeat(setup,monkeypatch):
 
 
 def test_legacy_named_env_overrides_are_limited_to_selected_backup(tmp_path,monkeypatch):
-    from serein.legacy_migration.models import load_models
+    from lattice.legacy_migration.models import load_models
     (tmp_path/'config.yaml').write_text('dehydration:\n  model: old-tag\n  base_url: https://old.example/v1\nembedding:\n  model: old-embed\n  base_url: https://old.example/v1\ngateway:\n  upstreams:\n    - name: old\n      base_url: https://provider.example/v1\n      api_key_envs: [MISSING, PROVIDER_KEY]\n      models: [chat]\n','utf-8')
     (tmp_path/'.env').write_text('OMBRE_API_KEY=backup-key\nOMBRE_DEHYDRATION_MODEL=new-tag\nOMBRE_DEHYDRATION_BASE_URL=https://new.example/v1\nOMBRE_EMBEDDING_API_KEY=embedding-key\nPROVIDER_KEY=provider-key\n','utf-8')
     monkeypatch.setenv('OMBRE_API_KEY','host-key-must-not-be-used')
@@ -348,8 +348,8 @@ def test_program_edges_keep_exact_types_and_skip_inactive(setup):
                    {'source':'a','target':'missing','relation':'echoes'},
                    {'source':'a','target':'archived','relation':'echoes'}]
     asyncio.run(migration.edges())
-    from serein.compat.germany.scene_linker import SceneEdgeStore
-    edges=SceneEdgeStore({'serein_database':str(settings.database)},create=False).list_edges()
+    from lattice.compat.germany.scene_linker import SceneEdgeStore
+    edges=SceneEdgeStore({'lattice_database':str(settings.database)},create=False).list_edges()
     assert len(edges)==1 and edges[0]['relation_type']=='continues'
     assert edges[0]['source']==migration.ids['a'] and edges[0]['target']==migration.ids['b']
 
@@ -399,16 +399,16 @@ def test_exact_text_vector_reuse_and_unverifiable_whole(setup):
 
 @pytest.mark.parametrize('kind','triggers causes precedes context_of same_event next_context previous_context reflects_on evidenced_by contradicts supports promises blocks belongs_to emotional_echo relates_to related_to unknown'.split())
 def test_uncertain_types_do_not_invent_a_relation(kind):
-    from serein.legacy_migration.edges import conversion
+    from lattice.legacy_migration.edges import conversion
     result,reason=conversion({'relation_type':kind})
     assert result is None and reason
 
 
 def seed_v1(settings,migration,old,*,active=True,project=True):
-    from serein.legacy_migration.edges import initialize_edges,OLD_VERSION
-    from serein.compat.germany.scene_linker import _scene_hash
-    from serein.compat.scenes import scene_payload
-    from serein.core.store import encode
+    from lattice.legacy_migration.edges import initialize_edges,OLD_VERSION
+    from lattice.compat.germany.scene_linker import _scene_hash
+    from lattice.compat.scenes import scene_payload
+    from lattice.core.store import encode
     initialize_edges(settings.database)
     left,right=sorted((migration.ids[old['source']],migration.ids[old['target']]))
     with Store(settings.database) as store:
@@ -428,7 +428,7 @@ def test_updates_reverse_and_hold_are_persisted_without_models(setup,monkeypatch
     plan['edges']=[{'source':'b','target':'a','relation_type':'updates'},
                    {'source':'a','target':'b','relation_type':'supports'}]
     async def forbidden(*a,**kw):raise AssertionError('no model calls')
-    monkeypatch.setattr('serein.model_runtime.complete',forbidden)
+    monkeypatch.setattr('lattice.model_runtime.complete',forbidden)
     asyncio.run(migration.edges())
     with Store(settings.database,read_only=True) as store:
         row=store.conn.execute('SELECT * FROM scene_edges WHERE active=1').fetchone()
@@ -441,7 +441,7 @@ def test_updates_reverse_and_hold_are_persisted_without_models(setup,monkeypatch
 
 @pytest.mark.parametrize('project',[True,False])
 def test_repair_v1_fallback_without_original_backup_and_repeat(setup,project):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,_,_,migration=setup;migration.import_bodies()
     old={'source':'b','target':'a','relation_type':'updates'}
     seed_v1(settings,migration,old,project=project)
@@ -468,7 +468,7 @@ def test_repair_v1_fallback_without_original_backup_and_repeat(setup,project):
 
 @pytest.mark.parametrize('mode',['cancelled','edited','uncertain'])
 def test_repair_preserves_cancelled_changed_and_unmappable_records(setup,mode):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,_,_,migration=setup;migration.import_bodies()
     old={'source':'b','target':'a','relation_type':'supports' if mode=='uncertain' else 'updates'}
     seed_v1(settings,migration,old,active=mode!='cancelled')
@@ -485,7 +485,7 @@ def test_repair_preserves_cancelled_changed_and_unmappable_records(setup,mode):
 
 
 def test_repair_missing_edge_file_keeps_existing_scene_ids(setup):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,root,plan,migration=setup;migration.import_bodies()
     original_ids=set(migration.ids.values())
     old={'source':'b','target':'a','relation_type':'updates'}
@@ -502,7 +502,7 @@ def test_repair_missing_edge_file_keeps_existing_scene_ids(setup):
 
 
 def test_repair_does_not_guess_from_legacy_id_alone(setup):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,root,_,migration=setup;migration.import_bodies()
     legacy(root,'dynamic','a','另一份内容，不是当时导入的快照。')
     (root/'state/memory_edges.jsonl').write_text(json.dumps({'source':'b','target':'a','relation_type':'updates'})+'\n','utf-8')
@@ -513,11 +513,11 @@ def test_repair_does_not_guess_from_legacy_id_alone(setup):
 
 
 def test_repair_rollback_does_not_retire_v1_on_projection_failure(setup,monkeypatch):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,_,_,migration=setup;migration.import_bodies()
     seed_v1(settings,migration,{'source':'b','target':'a','relation_type':'updates'})
     def fail(*a):raise ValueError('synthetic projection failure')
-    monkeypatch.setattr('serein.compat.relation_storage.project_relations',fail)
+    monkeypatch.setattr('lattice.compat.relation_storage.project_relations',fail)
     with pytest.raises(ValueError,match='synthetic'):
         run_repair(settings,*collect(settings.database))
     with Store(settings.database,read_only=True) as store:
@@ -531,7 +531,7 @@ def test_repair_rollback_does_not_retire_v1_on_projection_failure(setup,monkeypa
 def test_old_done_ledger_does_not_hide_new_conversion(setup):
     settings,_,plan,migration=setup;migration.import_bodies()
     old={'source':'b','target':'a','relation_type':'updates'};plan['edges']=[old]
-    from serein.core.store import encode
+    from lattice.core.store import encode
     migration.mark(digest(encode(old)),'edge','done',{'relation_type':'related_to'})
     asyncio.run(migration.edges())
     assert migration.report()['edge_records'][0]['relation_type']=='continues'
@@ -540,7 +540,7 @@ def test_old_done_ledger_does_not_hide_new_conversion(setup):
 
 def test_repair_cli_preview_is_read_only_and_apply_is_edge_only(setup,monkeypatch,capsys,tmp_path):
     import sys
-    from serein.legacy_migration.__main__ import main
+    from lattice.legacy_migration.__main__ import main
     settings,root,_,migration=setup;migration.import_bodies()
     (root/'state/memory_edges.jsonl').write_text(json.dumps({'source':'b','target':'a','relation_type':'updates'})+'\n','utf-8')
     config=tmp_path/'config.toml'
@@ -560,9 +560,9 @@ def test_repair_cli_preview_is_read_only_and_apply_is_edge_only(setup,monkeypatc
 
 
 def test_repair_preserves_an_existing_reviewed_target(setup):
-    from serein.legacy_migration.repair import collect,run_repair
-    from serein.legacy_migration.edges import initialize_edges,save_edge
-    from serein.compat.scenes import scene_payload
+    from lattice.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.edges import initialize_edges,save_edge
+    from lattice.compat.scenes import scene_payload
     settings,_,_,migration=setup;migration.import_bodies()
     old={'source':'b','target':'a','relation_type':'updates'}
     initialize_edges(settings.database)
@@ -583,7 +583,7 @@ def test_repair_preserves_an_existing_reviewed_target(setup):
 
 
 def test_unprojected_v1_batch_does_not_block_each_other(setup):
-    from serein.legacy_migration.repair import collect,run_repair
+    from lattice.legacy_migration.repair import collect,run_repair
     settings,_,_,migration=setup;migration.import_bodies()
     seed_v1(settings,migration,{'source':'b','target':'a','relation_type':'updates'},project=False)
     with Store(settings.database) as store:
@@ -598,12 +598,12 @@ def test_unprojected_v1_batch_does_not_block_each_other(setup):
 
 
 def test_migration_owns_tagging_and_missing_edges_only_warn(setup,monkeypatch):
-    from serein.import_tagging import process
+    from lattice.import_tagging import process
     settings,root,plan,migration=setup
     migration.import_bodies()
     calls=[]
     async def unexpected(*args,**kwargs):calls.append(args);raise AssertionError('duplicate paid call')
-    monkeypatch.setattr('serein.model_runtime.complete',unexpected)
+    monkeypatch.setattr('lattice.model_runtime.complete',unexpected)
     asyncio.run(process(settings.database))
     assert not calls
     with Store(settings.database) as store:

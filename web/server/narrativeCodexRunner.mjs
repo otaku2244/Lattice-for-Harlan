@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { callSereinBackend } from "./sereinBackend.mjs";
+import { callLatticeBackend } from "./latticeBackend.mjs";
 
 // A preview that fails validation is thrown away on purpose, which leaves no
 // way to see what the model actually wrote. Record the rejected output next to
@@ -77,9 +77,9 @@ const reviewWarnings = (review, issues, missing) => {
 
 export const narrativeModelForMode = (mode) => {
   if (!new Set(["update", "rewrite"]).has(mode)) throw new Error("invalid_narrative_writer_mode");
-  const model = process.env.SEREIN_WRITER_MODEL;
+  const model = process.env.LATTICE_WRITER_MODEL;
   if (!model) throw new Error("narrative_writer_model_not_configured");
-  return {model, reasoningEffort: process.env.SEREIN_WRITER_REASONING || ""};
+  return {model, reasoningEffort: process.env.LATTICE_WRITER_REASONING || ""};
 };
 
 export function buildNarrativeTaskPrompt({ mode, title, writingFocus = "", currentBody, materials, roleRules, identity = { user_name: "User", ai_name: "AI" } }) {
@@ -254,16 +254,16 @@ export function narrativeBodyDiff(currentBody, proposedBody) {
 }
 
 // The configured runner accepts one JSON object on stdin and returns the result
-// schema on stdout. It owns provider credentials; Serein never selects a chat window.
-export async function runNarrativeCodexTask({mode,title,writingFocus = "",currentBody,materials,roleDir}, {backend = callSereinBackend, signal} = {}) {
+// schema on stdout. It owns provider credentials; Lattice never selects a chat window.
+export async function runNarrativeCodexTask({mode,title,writingFocus = "",currentBody,materials,roleDir}, {backend = callLatticeBackend, signal} = {}) {
   const instance = await backend("/v1/settings", {signal});
   if (!instance.ok) throw new Error("narrative_identity_unavailable");
   const {identity, upstream} = instance.payload;
   if (instance.payload.features?.narrative_tools) throw new Error("narrative_writer_disabled_main_model_authoring");
   const writerModel = (instance.payload.available_models || instance.payload.models)?.find(item => item.id === instance.payload.assignments?.writer);
   const useUpstream = upstream.writer_enabled;
-  if (!useUpstream && process.env.SEREIN_WRITER_ENABLED !== "1") throw new Error("narrative_writer_disabled");
-  const command = JSON.parse(process.env.SEREIN_WRITER_COMMAND || "[]");
+  if (!useUpstream && process.env.LATTICE_WRITER_ENABLED !== "1") throw new Error("narrative_writer_disabled");
+  const command = JSON.parse(process.env.LATTICE_WRITER_COMMAND || "[]");
   if (!useUpstream && (!Array.isArray(command) || !command.length || command.some(x => typeof x !== "string"))) {
     throw new Error("narrative_writer_command_not_configured");
   }
@@ -294,7 +294,7 @@ export async function runNarrativeCodexTask({mode,title,writingFocus = "",curren
   } catch (error) {
     // Validation rejected a draft the model did produce. Keep it before the
     // error code travels up and the body is lost.
-    recordWriterDebug(process.env.SEREIN_WRITER_DEBUG_DIR || "/writer-debug", {
+    recordWriterDebug(process.env.LATTICE_WRITER_DEBUG_DIR || "/writer-debug", {
       layer: "node",
       error: error?.message || String(error),
       model: selection.model,

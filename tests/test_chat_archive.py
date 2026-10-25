@@ -4,8 +4,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.core.store import Store
+from lattice.api.http import create_app
+from lattice.core.store import Store
 from test_public_settings import deployment, configure
 
 
@@ -17,12 +17,12 @@ def rows(settings):
 def respond(monkeypatch, content='Synthetic final answer', **fields):
     async def complete(*args, **kwargs):
         return {'choices': [{'message': {'role': 'assistant', 'content': content, **fields}}]}
-    monkeypatch.setattr('serein.api.chat.complete', complete)
+    monkeypatch.setattr('lattice.api.chat.complete', complete)
 
 
 def send(client, messages, window='audit-window', **options):
     return client.post('/v1/chat/completions', json={
-        'messages': messages, 'serein': {'window_id': window, 'memory': False}, **options})
+        'messages': messages, 'lattice': {'window_id': window, 'memory': False}, **options})
 
 
 def test_success_archives_current_pair_and_searchable_ids(deployment, monkeypatch):
@@ -37,13 +37,13 @@ def test_success_archives_current_pair_and_searchable_ids(deployment, monkeypatc
     send(client, history).raise_for_status()
     saved = rows(settings)
     assert [(r['role'], r['text']) for r in saved] == [('user', 'Current question'), ('assistant', 'Synthetic final answer')]
-    assert all(r['source'] == 'serein_chat' and r['session_id'] == 'audit-window' for r in saved)
+    assert all(r['source'] == 'lattice_chat' and r['session_id'] == 'audit-window' for r in saved)
     assert all(secret not in json.dumps(saved) for secret in ['secret system', 'hidden reasoning', 'Old question', 'Old answer', 'private client context'])
     found = client.post('/v1/host/messages/search', json={'messageIds': [r['id'] for r in saved]})
     found.raise_for_status()
     assert len(found.json()['items']) == 2
     assert client.post('/api/search-raw', json={'query': 'Current question'}).json()['items']
-    from serein.extensions.pipeline import initialize
+    from lattice.extensions.pipeline import initialize
     initialize(settings.database)
     with Store(settings.database, read_only=True) as store:
         assert store.conn.execute('SELECT count(*) FROM raw_processing').fetchone()[0] == 0
@@ -54,15 +54,15 @@ def test_success_archives_current_pair_and_searchable_ids(deployment, monkeypatc
 def test_recall_injection_is_not_original_speech(deployment, monkeypatch):
     settings, client = deployment
     configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready', lambda _: True)
-    monkeypatch.setattr('serein.application.Services.recall', lambda *a, **k: {
+    monkeypatch.setattr('lattice.configured_models.memory_ready', lambda _: True)
+    monkeypatch.setattr('lattice.application.Services.recall', lambda *a, **k: {
         'selected_refs': ['scene:synthetic'], 'context': 'SECRET_RECALLED_BODY', 'cards': []})
     async def complete(model, body, **kwargs):
         assert 'SECRET_RECALLED_BODY' in json.dumps(body)
         return {'choices': [{'message': {'role': 'assistant', 'content': 'Current answer'}}]}
-    monkeypatch.setattr('serein.api.chat.complete', complete)
+    monkeypatch.setattr('lattice.api.chat.complete', complete)
     client.post('/v1/chat/completions', json={'messages': [{'role': 'user', 'content': 'Current question'}],
-        'serein': {'window_id': 'injection-window', 'memory': True}}).raise_for_status()
+        'lattice': {'window_id': 'injection-window', 'memory': True}}).raise_for_status()
     assert [r['text'] for r in rows(settings)] == ['Current question', 'Current answer']
     assert 'SECRET_RECALLED_BODY' not in json.dumps(rows(settings))
 
@@ -112,7 +112,7 @@ def test_failure_and_empty_output_do_not_invent_raw_reply(deployment, monkeypatc
     configure(client)
     async def fail(*args, **kwargs):
         raise httpx.ConnectError('upstream unavailable')
-    monkeypatch.setattr('serein.api.chat.complete', fail)
+    monkeypatch.setattr('lattice.api.chat.complete', fail)
     assert send(client, [{'role': 'user', 'content': 'Failed question'}]).status_code == 502
     respond(monkeypatch, '')
     send(client, [{'role': 'user', 'content': 'Empty question'}]).raise_for_status()
@@ -124,7 +124,7 @@ def test_injection_not_archived_and_images_remain_bound(deployment, monkeypatch)
     configure(client)
     respond(monkeypatch)
     user = {'role': 'user', 'id': 'client-message-1', 'content': [
-        {'type': 'text', 'text': '<serein_live_context>secret recalled body</serein_live_context>\n\nCurrent user message:\nPicture question'},
+        {'type': 'text', 'text': '<lattice_live_context>secret recalled body</lattice_live_context>\n\nCurrent user message:\nPicture question'},
         {'type': 'image_url', 'image_url': {'url': 'https://example.invalid/synthetic.png'}},
         {'type': 'tool_result', 'text': 'secret tool output'}]}
     send(client, [user]).raise_for_status()
@@ -134,7 +134,7 @@ def test_injection_not_archived_and_images_remain_bound(deployment, monkeypatch)
     assert metadata['attachments'] == [{'kind': 'image', 'url': 'https://example.invalid/synthetic.png'}]
     assert metadata['original_message_id'] == 'client-message-1'
     assert 'secret' not in json.dumps(saved)
-    from serein.extensions.pipeline import message, writer_images
+    from lattice.extensions.pipeline import message, writer_images
     projected = message(saved[0])
     images, missing = writer_images([projected], {projected['id']})
     assert images[0]['url'] == 'https://example.invalid/synthetic.png' and not missing
@@ -151,7 +151,7 @@ def test_archive_failure_visible_without_losing_reply(deployment, monkeypatch):
     respond(monkeypatch)
     def fail(*args):
         raise OSError('private storage details')
-    monkeypatch.setattr('serein.api.chat.archive_turn', fail)
+    monkeypatch.setattr('lattice.api.chat.archive_turn', fail)
     response = send(client, [{'role': 'user', 'content': 'Storage failure question'}])
     response.raise_for_status()
     assert response.json()['choices'][0]['message']['content'] == 'Synthetic final answer'

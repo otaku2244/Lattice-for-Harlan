@@ -77,7 +77,7 @@ test('request uses saved settings without enabling Passage or changing limits', 
   const config = {memory_ready: true, recall: {passages_enabled: false}};
   const result = await prepareMemoryIndex({
     fetchImpl: async (url, options) => {
-      assert.equal(url, '/__serein/settings/prepare-memory');
+      assert.equal(url, '/__lattice/settings/prepare-memory');
       assert.equal(options.method, 'POST');
       assert.equal(options.body, '{}');
       return {ok: true, json: async () => receipt()};

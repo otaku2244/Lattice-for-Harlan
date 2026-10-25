@@ -3,11 +3,11 @@ import json
 import httpx
 import pytest
 from test_public_settings import deployment
-from serein.application import Application
-from serein.api.mcp import create_server
-from serein.chat_features import current_round, prepare
-from serein.compat.memo_store import ReminderStore
-from serein.core.store import Store, encode
+from lattice.application import Application
+from lattice.api.mcp import create_server
+from lattice.chat_features import current_round, prepare
+from lattice.compat.memo_store import ReminderStore
+from lattice.core.store import Store, encode
 
 
 def configure(client, memos=True):
@@ -43,27 +43,27 @@ def test_real_proxy_persona_cadence_context_and_tool_continuation(deployment,mon
     history=[]
     for number in (1,2):
         history.append({'role':'user','content':'合成问题'+str(number)})
-        response=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'w'},json={'messages':history})
+        response=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'w'},json={'messages':history})
         assert response.status_code==200,response.text
         history.append(response.json()['choices'][0]['message'])
     assert evaluations==[] and current_round(settings.database,'w')==2
-    store=ReminderStore({'serein_database':settings.database})
+    store=ReminderStore({'lattice_database':settings.database})
     if memos:store.create(title='临时备忘',content='合成工具轮备忘',repeat_rule='once',reminder_id='m1')
     history.append({'role':'user','content':'合成问题3'})
-    response=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'w'},json={'messages':history})
+    response=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'w'},json={'messages':history})
     assert response.status_code==200
     assert current_round(settings.database,'w')==2 and evaluations==[]
     if memos:assert store.get('m1')['reminder_count']==0
     history.extend([response.json()['choices'][0]['message'],{'role':'tool','tool_call_id':'t1','content':'合成工具结果'}])
-    response=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'w'},json={'messages':history})
-    assert response.status_code==200 and response.headers['x-serein-context-replayed']=='true'
+    response=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'w'},json={'messages':history})
+    assert response.status_code==200 and response.headers['x-lattice-context-replayed']=='true'
     assert current_round(settings.database,'w')==3 and len(evaluations)==1
     assert evaluations[0]['latest_user_message']=='合成问题3'
     assert [turn['user_message'] for turn in evaluations[0]['recent_conversation_turns']]==['合成问题1','合成问题2']
     assert evaluations[0]['assistant_response']=='合成答复4'
     if memos:assert store.get('m1')['reminder_count']==1 and store.get('m1')['status']=='archived'
     if memos:assert 'm1' in json.dumps(calls[-1],ensure_ascii=False)
-    retry=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'w'},json={'messages':history})
+    retry=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'w'},json={'messages':history})
     assert retry.status_code==200 and current_round(settings.database,'w')==3
     if memos:assert store.get('m1')['reminder_count']==1
     state=client.get('/v1/companion/persona?session_id=w').json()
@@ -81,7 +81,7 @@ def test_streaming_memo_consumption_and_persona_only_after_final_reply(deploymen
     settings,client=deployment;configure(client)
     with Store(settings.database) as db,db.transaction():
         db.conn.execute('INSERT INTO background_state VALUES (?,?)',('feature_round:w',encode(2)))
-    store=ReminderStore({'serein_database':settings.database})
+    store=ReminderStore({'lattice_database':settings.database})
     store.create(title='流式备忘',content='合成流式提醒',repeat_rule='once',reminder_id='m1')
     evaluations=[]
     def handle(request):
@@ -97,7 +97,7 @@ def test_streaming_memo_consumption_and_persona_only_after_final_reply(deploymen
         return httpx.Response(200,text=raw,headers={'content-type':'text/event-stream'})
     original=httpx.AsyncClient
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kw:original(transport=httpx.MockTransport(handle),**kw))
-    result=client.post('/v1/chat/completions',headers={'X-Serein-Window-ID':'w'},json={'messages':[{'role':'user','content':'合成流式问题'}],'stream':True})
+    result=client.post('/v1/chat/completions',headers={'X-Lattice-Window-ID':'w'},json={'messages':[{'role':'user','content':'合成流式问题'}],'stream':True})
     assert result.status_code==200
     success=ending=='complete'
     assert store.get('m1')['reminder_count']==int(success)

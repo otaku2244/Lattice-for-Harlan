@@ -4,10 +4,10 @@ import sqlite3
 
 import pytest
 
-from serein.core import Conflict, Store
-from serein.core.store import digest, encode
-from serein.ingest.event_snapshot import export_events
-from serein.ingest.legacy_event import import_events
+from lattice.core import Conflict, Store
+from lattice.core.store import digest, encode
+from lattice.ingest.event_snapshot import export_events
+from lattice.ingest.legacy_event import import_events
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def event_snapshot():
                for i, body, kind in [(1, "primary words", "primary"), (2, "supporting words", "supporting")]]
     receipt = {"operation_id": "operation_one", "request_sha256": "original_request_hash", "created_at": "old",
                "result_json": '{ "ok": true, "items": [{"item_id":"event_a"}] }'}
-    return {"format": "serein-event-snapshot-v1", "origin": "test-events", "events": [a, b],
+    return {"format": "lattice-event-snapshot-v1", "origin": "test-events", "events": [a, b],
             "sources": sources, "replacement_edges": [], "settlement_receipts": [receipt],
             "arc_event_links": [{"arc_key": "arc", "event_id": "event_a", "linked_at": "old"}],
             "excluded_item_ids": ["fact_one"]}

@@ -1,6 +1,6 @@
 import { makeFlowers } from './geometry.js';
 
-const layoutKey = 'serein.garden.memory-positions.v1';
+const layoutKey = 'lattice.garden.memory-positions.v1';
 
 export function projectMemories(payload) {
   const records = new Map();

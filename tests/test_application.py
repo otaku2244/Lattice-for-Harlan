@@ -5,11 +5,11 @@ import sys
 
 import pytest
 
-from serein.application import Application
-from serein.config import Settings, load_settings
-from serein.core import Store
-from serein.core.search import build_index
-from serein.extensions import Contributions
+from lattice.application import Application
+from lattice.config import Settings, load_settings
+from lattice.core import Store
+from lattice.core.search import build_index
+from lattice.extensions import Contributions
 
 
 def test_disabled_extension_never_loads_or_contributes(tmp_path):
@@ -48,10 +48,10 @@ def test_explicit_profile_paths_and_unknown_settings(tmp_path, monkeypatch):
     config_dir = tmp_path / "profile"
     config_dir.mkdir()
     config = config_dir / "config.toml"
-    config.write_text('[storage]\ndatabase="data/serein.db"\n[extensions.handoff]\nenabled=false\n', encoding="utf-8")
+    config.write_text('[storage]\ndatabase="data/lattice.db"\n[extensions.handoff]\nenabled=false\n', encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     settings = load_settings(config)
-    assert settings.database == config_dir / "data" / "serein.db"
+    assert settings.database == config_dir / "data" / "lattice.db"
     assert settings.index is None
     config.write_text('[storage]\ndatabase="data.db"\n[extensions.handoff]\nenabled="false"\n', encoding="utf-8")
     with pytest.raises(ValueError, match="boolean"):
@@ -73,7 +73,7 @@ def test_cli_profile_uses_same_core_as_explicit_paths(tmp_path):
     env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"), "PYTHONIOENCODING": "utf-8"}
 
     def run(*args):
-        proc = subprocess.run([sys.executable, "-m", "serein", *map(str, args)], cwd=tmp_path,
+        proc = subprocess.run([sys.executable, "-m", "lattice", *map(str, args)], cwd=tmp_path,
                               env=env, capture_output=True, text=True, encoding="utf-8", check=True)
         return json.loads(proc.stdout)
 
@@ -86,7 +86,7 @@ def test_cli_profile_uses_same_core_as_explicit_paths(tmp_path):
 def test_automatic_recall_method_uses_one_effective_snapshot(tmp_path, monkeypatch):
     from dataclasses import replace
     from types import SimpleNamespace
-    from serein.application import Services
+    from lattice.application import Services
 
     settings = Settings(tmp_path / 'unused.db')
     effective = replace(settings, embedding={'endpoint':'https://synthetic.example/embeddings'})
@@ -106,8 +106,8 @@ def test_automatic_recall_method_uses_one_effective_snapshot(tmp_path, monkeypat
             calls.append(options)
             return {'status':'no_match'}
 
-    monkeypatch.setattr('serein.configured_models.effective_settings', resolve)
-    monkeypatch.setattr('serein.application.Recall', FakeRecall)
+    monkeypatch.setattr('lattice.configured_models.effective_settings', resolve)
+    monkeypatch.setattr('lattice.application.Recall', FakeRecall)
     services = Services(settings)
     services.recall('synthetic', method=None, min_cosine=.5)
     assert resolved == [settings]

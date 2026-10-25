@@ -54,8 +54,8 @@ export function ModelSettings({page,summaryRequest=0,onOpenPipeline,onOpenCatalo
     let active=true;
     instanceSettings().then(value=>{if(active)setConfig(value);}).catch(error=>{if(active)setStatus(error.message);});
     const saved=event=>setConfig(current=>current?{...current,settings_version:event.detail.settings_version,recall:event.detail.recall,features:event.detail.features,pipeline:{...current.pipeline,auto_enabled:event.detail.pipeline.auto_enabled}}:current);
-    window.addEventListener('serein:settings-saved',saved);
-    return()=>{active=false;window.removeEventListener('serein:settings-saved',saved);};
+    window.addEventListener('lattice:settings-saved',saved);
+    return()=>{active=false;window.removeEventListener('lattice:settings-saved',saved);};
   },[]);
   useEffect(()=>{
     if(page !== 'configuration')return;

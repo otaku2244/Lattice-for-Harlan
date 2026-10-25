@@ -64,7 +64,7 @@ export function NarrativePage() {
       if (!cancelled && rolls?.length) setNarrativeRolls(rolls);
     });
     const openFromInbox = () => {
-      if (window.location.hash === "#narrative" && window.sessionStorage.getItem("serein:narrative-open-intent")) refreshRolls();
+      if (window.location.hash === "#narrative" && window.sessionStorage.getItem("lattice:narrative-open-intent")) refreshRolls();
     };
     refreshRolls();
     window.addEventListener("hashchange", openFromInbox);
@@ -203,7 +203,7 @@ export function NarrativePage() {
     setSaving(true);
     setPreviewError("");
     try {
-      const response = await fetch("/__serein/memory/save-narrative-materials", {
+      const response = await fetch("/__lattice/memory/save-narrative-materials", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ narrative_id: selectedRoll.id, expected_revision: selectedRoll.revision,
           material_ids: materialIds || selectedRoll.materialIds }),
@@ -221,12 +221,12 @@ export function NarrativePage() {
 
   useEffect(() => {
     if (window.location.hash !== "#narrative") return;
-    const raw = window.sessionStorage.getItem("serein:narrative-open-intent");
+    const raw = window.sessionStorage.getItem("lattice:narrative-open-intent");
     if (!raw) return;
     const intent = JSON.parse(raw);
     const roll = narrativeRolls.find(item => item.id === intent.narrativeId);
     if (!roll) return;
-    window.sessionStorage.removeItem("serein:narrative-open-intent");
+    window.sessionStorage.removeItem("lattice:narrative-open-intent");
     setSelectedRollId(roll.id);
     if (intent.action === "write") writeNewRoll(roll);
   }, [narrativeRolls]);
@@ -234,10 +234,10 @@ export function NarrativePage() {
   useEffect(() => {
     const openRewriteIntent = () => {
       if (window.location.hash !== "#narrative") return;
-      const narrativeId = window.sessionStorage.getItem("serein:narrative-rewrite-intent") || "";
+      const narrativeId = window.sessionStorage.getItem("lattice:narrative-rewrite-intent") || "";
       const targetRoll = narrativeRolls.find((roll) => roll.id === narrativeId);
       if (!targetRoll) return;
-      window.sessionStorage.removeItem("serein:narrative-rewrite-intent");
+      window.sessionStorage.removeItem("lattice:narrative-rewrite-intent");
       setSelectedRollId(targetRoll.id);
       generatePreview("rewrite", targetRoll);
     };

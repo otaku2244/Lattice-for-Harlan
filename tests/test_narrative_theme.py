@@ -7,10 +7,10 @@ import pytest
 
 from test_live_clients import live
 from test_live_narratives import seed
-from serein.api.narratives import endpoints
-from serein.compat.narratives import narrative_transaction
-from serein.compat.narrative_theme import material_rows, source_receipt
-from serein.deployment import save_settings
+from lattice.api.narratives import endpoints
+from lattice.compat.narratives import narrative_transaction
+from lattice.compat.narrative_theme import material_rows, source_receipt
+from lattice.deployment import save_settings
 
 
 def configure_scout(settings):
@@ -71,7 +71,7 @@ def test_discover_mixed_sources_excludes_locked_and_does_not_write(live, monkeyp
         assert '不能外发的秘密' not in str(candidates)
         return {'title': '雨声', 'outline': '从日记到一起听雨。',
             'sources': [{'key': row['key'], 'reason': '一起听雨'} for row in candidates]}
-    monkeypatch.setattr('serein.compat.narrative_theme.model_json', model)
+    monkeypatch.setattr('lattice.compat.narrative_theme.model_json', model)
     before = client.get('/api/narrative-rolls').json()
     response = client.post('/api/narrative-rolls/discover-theme', json={'theme': '一起听雨'})
     assert response.status_code == 200, response.text
@@ -91,7 +91,7 @@ def test_discovery_rejects_invented_material(live, monkeypatch):
         if 'candidates' not in payload:
             return {'terms': ['雨声']}
         return {'sources': [{'key': 'diary:999999', 'reason': 'imagined'}]}
-    monkeypatch.setattr('serein.compat.narrative_theme.model_json', model)
+    monkeypatch.setattr('lattice.compat.narrative_theme.model_json', model)
     response = client.post('/api/narrative-rolls/discover-theme', json={'theme': '雨声'})
     assert response.status_code == 400 and '清单外' in response.text
 
@@ -100,14 +100,14 @@ def test_discovery_requires_explicit_scout_assignment(live, monkeypatch):
     settings, client = live
     async def unexpected(*args, **kwargs):
         pytest.fail('Unconfigured discovery must not call a model')
-    monkeypatch.setattr('serein.compat.narrative_theme.model_json', unexpected)
+    monkeypatch.setattr('lattice.compat.narrative_theme.model_json', unexpected)
     response = client.post('/api/narrative-rolls/discover-theme', json={'theme': '一起听雨'})
     assert response.status_code == 400 and '叙事卷找材料' in response.text
 
 
 @pytest.mark.parametrize('protocol', ['openai', 'anthropic'])
 def test_configured_discovery_transport_has_no_task_specific_output_budget(protocol):
-    from serein.compat.narrative_theme import model_json
+    from lattice.compat.narrative_theme import model_json
     model = {'model': 'gpt-synthetic' if protocol == 'openai' else 'synthetic-scout',
         'protocol': protocol, 'base_url': 'https://model.example.invalid/v1', 'api_key': 'synthetic'}
     calls = []
@@ -151,7 +151,7 @@ def test_discovery_http_errors_do_not_expose_provider_body(live, monkeypatch):
         response = httpx.Response(429, text='private-provider-detail',
             request=httpx.Request('POST', 'https://model.example.invalid/v1/chat/completions'))
         response.raise_for_status()
-    monkeypatch.setattr('serein.compat.narrative_theme.model_json', fail)
+    monkeypatch.setattr('lattice.compat.narrative_theme.model_json', fail)
     response = client.post('/api/narrative-rolls/discover-theme', json={'theme': '雨声'})
     assert response.status_code == 502
     assert 'private-provider-detail' not in response.text
@@ -171,7 +171,7 @@ def test_discovery_caps_material_input_and_selection(live, monkeypatch):
         assert len(candidates) == 16
         assert sum(len(row['material_excerpt']) for row in candidates) <= 8000
         return {'title': '雨' * 30, 'sources': [{'key': row['key']} for row in candidates]}
-    monkeypatch.setattr('serein.compat.narrative_theme.model_json', model)
+    monkeypatch.setattr('lattice.compat.narrative_theme.model_json', model)
     response = client.post('/api/narrative-rolls/discover-theme', json={'theme': '雨声'})
     assert response.status_code == 200, response.text
     result = response.json()

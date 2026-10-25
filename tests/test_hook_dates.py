@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from serein.api.gateway import routes
-from serein.recall.rendering import render
+from lattice.api.gateway import routes
+from lattice.recall.rendering import render
 
 
 def rendered(kind, metadata):

@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from test_public_edition import settings
-from serein.compat.narratives import narrative_transaction, RevisionInbox
-from serein.core import Store
-from serein.compat.germany.narrative_revision_scout import (
+from lattice.compat.narratives import narrative_transaction, RevisionInbox
+from lattice.core import Store
+from lattice.compat.germany.narrative_revision_scout import (
     build_new_roll_candidate_prompt, normalize_new_roll_candidates, propose_new_roll_candidates,
 )
 
@@ -18,10 +18,10 @@ def seed(settings, count=4):
 
 
 def test_promoted_live_event_keeps_originals_and_retires_hint_without_losing_draft(settings):
-    from serein.application import Application
-    from serein.compat.events import Events
-    from serein.compat.scout import Scout
-    from serein.deployment import save_settings
+    from lattice.application import Application
+    from lattice.compat.events import Events
+    from lattice.compat.scout import Scout
+    from lattice.deployment import save_settings
     from test_live_events import item
     events = Events(settings.database, initialize=True)
     key = events.write_many([item(origin='synthetic:promotion')])['items'][0]['item_id']
@@ -155,7 +155,7 @@ def test_scout_prompt_and_validation_support_explicit_single_material_continuati
 
 def test_candidate_material_titles_pagination_and_current_read_access(settings):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
+    from lattice.api.http import create_app
     seed(settings)
     first = consider(settings, candidate())[0]
     path = '/api/narrative-revision-inbox/' + first['proposal_id'] + '/materials'
@@ -178,13 +178,13 @@ def test_candidate_material_titles_pagination_and_current_read_access(settings):
 
 def test_scan_uses_configured_theme_model_to_create_blank_collecting_arc(settings, monkeypatch):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.deployment import save_settings
+    from lattice.api.http import create_app
+    from lattice.deployment import save_settings
 
     with Store(settings.database) as store, store.transaction():
-        store.create('scene_0', 'scene', 'Serein milestone one', 'SereinProject reached its first milestone.',
+        store.create('scene_0', 'scene', 'Lattice milestone one', 'LatticeProject reached its first milestone.',
                      metadata={'object_kind':'scene'})
-        store.create('scene_1', 'scene', 'Serein milestone two', 'SereinProject reached its second milestone.',
+        store.create('scene_1', 'scene', 'Lattice milestone two', 'LatticeProject reached its second milestone.',
                      metadata={'object_kind':'scene'})
     save_settings(settings.database, {'models': [{'id': 'scout', 'model': 'synthetic-scout',
         'base_url': 'http://127.0.0.1:9/v1'}], 'assignments': {'narrative_scout': 'scout'},
@@ -202,10 +202,10 @@ def test_scan_uses_configured_theme_model_to_create_blank_collecting_arc(setting
         called.append(payload)
         return {'choices':[{'message':{'content':json.dumps({'candidates':[{
             'seed_source_type':'scene','seed_source_id':'scene_0','target_narrative_id':'',
-            'title':'Serein 里程碑','reason':'两份材料记录同一项目的持续推进','confidence':'high',
+            'title':'Lattice 里程碑','reason':'两份材料记录同一项目的持续推进','confidence':'high',
             'materials':[{'source_type':'scene','source_id':'scene_0'},
                          {'source_type':'scene','source_id':'scene_1'}]}]})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete', routed)
+    monkeypatch.setattr('lattice.model_runtime.complete', routed)
 
     with TestClient(create_app(settings, token='synthetic', live=True),
                     headers={'Authorization': 'Bearer synthetic'}) as client:
@@ -225,23 +225,23 @@ def test_scan_uses_configured_theme_model_to_create_blank_collecting_arc(setting
 
 
 def test_scan_with_no_new_materials_does_not_call_configured_model(settings, monkeypatch):
-    from serein.compat.scout import Scout
-    from serein.deployment import save_settings
+    from lattice.compat.scout import Scout
+    from lattice.deployment import save_settings
 
     save_settings(settings.database, {'models': [{'id':'scout','model':'synthetic-scout',
         'base_url':'http://127.0.0.1:9/v1'}], 'assignments':{'narrative_scout':'scout'},
         'features':{'narrative_nightly_organize':True}})
     async def unexpected(*args, **kwargs):
         pytest.fail('No materials must mean no model request')
-    monkeypatch.setattr('serein.model_runtime.complete', unexpected)
+    monkeypatch.setattr('lattice.model_runtime.complete', unexpected)
     result = asyncio.run(Scout(settings)._scan_narrative_revision_inbox())
     assert result['external_scout_status'] == 'no_materials'
     assert result['narrative_writes_performed'] == []
 
 
 def test_nightly_arc_switch_off_skips_new_materials_and_model(settings, monkeypatch):
-    from serein.compat.scout import Scout
-    from serein.deployment import save_settings
+    from lattice.compat.scout import Scout
+    from lattice.deployment import save_settings
 
     with Store(settings.database) as store, store.transaction():
         store.create('scene_new', 'scene', 'New material', 'A new continuing line.',
@@ -250,7 +250,7 @@ def test_nightly_arc_switch_off_skips_new_materials_and_model(settings, monkeypa
         'base_url':'http://127.0.0.1:9/v1'}], 'assignments':{'narrative_scout':'scout'}})
     async def unexpected(*args, **kwargs):
         pytest.fail('Disabled nightly Arc organization must not call a model')
-    monkeypatch.setattr('serein.model_runtime.complete', unexpected)
+    monkeypatch.setattr('lattice.model_runtime.complete', unexpected)
     result = asyncio.run(Scout(settings)._scan_narrative_revision_inbox())
     assert result['nightly_arc_organize_enabled'] is False
     assert result['external_scout_status'] == 'disabled'

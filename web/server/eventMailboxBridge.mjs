@@ -1,6 +1,6 @@
 // Same-origin bridge: only the Node process holds backend credentials.
 export function eventMailboxBridge(server, callBackend, readJsonBody) {
-  server.middlewares.use('/__serein/event-mailbox-promote', async (request, response) => {
+  server.middlewares.use('/__lattice/event-mailbox-promote', async (request, response) => {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
     if (request.method !== 'POST' || !['', '/'].includes((request.url || '').split('?')[0])) {
@@ -11,7 +11,7 @@ export function eventMailboxBridge(server, callBackend, readJsonBody) {
       response.statusCode=result.status; response.end(JSON.stringify(result.payload));
     } catch { response.statusCode=502; response.end(JSON.stringify({message:'升为 Scene 暂未完成，请重新读取确认；草稿仍会保留。'})); }
   });
-  server.middlewares.use('/__serein/event-mailbox', async (request, response) => {
+  server.middlewares.use('/__lattice/event-mailbox', async (request, response) => {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
     const rawPath=(request.url || '/').split('?')[0];

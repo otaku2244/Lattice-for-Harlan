@@ -4,16 +4,16 @@ import sqlite3
 
 import pytest
 
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.import_tagging import process
-from serein.recall.entities import rebuild_entities, candidates
-from serein.recall.index import refresh_index, Search
-from serein.recall.policy import RecallPolicy
-from serein.recall.query import Query
-from serein.tagging_entities import current_entities, validate
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.import_tagging import process
+from lattice.recall.entities import rebuild_entities, candidates
+from lattice.recall.index import refresh_index, Search
+from lattice.recall.policy import RecallPolicy
+from lattice.recall.query import Query
+from lattice.tagging_entities import current_entities, validate
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def test_bad_domain_does_not_discard_valid_entities(settings,monkeypatch,suggest
         source=request['materials'][0]['source_id']
         return response({**suggestion,'entities':[{'name':'Mira','type':'person',
             'supports':[{'source_id':source,'quote':'Mira 来访。'}]}]})
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     asyncio.run(process(settings.database))
     asyncio.run(process(settings.database))
     assert len(calls)==1
@@ -72,7 +72,7 @@ def test_extract_save_and_rebuild_with_exact_provenance(settings, monkeypatch, k
             {'name': '星海大学', 'type': 'organization', 'supports': [{'source_id': material['source_id'], 'quote': '星海大学'}]},
             {'name': '米拉', 'type': 'person', 'supports': [{'source_id': 'unbound-id', 'quote': body}]},
         ]})
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     asyncio.run(process(settings.database))
     asyncio.run(process(settings.database))
     assert len(calls) == 1 and calls[0]['kind'] == kind
@@ -121,7 +121,7 @@ def test_binding_change_during_model_call_is_not_saved_and_can_retry(settings, m
                 store.unbind(binding)
         return response({'domain': 'life', 'entities': [{'name': 'Mira', 'type': 'person',
             'supports': [{'source_id': material['source_id'], 'quote': 'Mira 来访。'}]}]})
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     asyncio.run(process(settings.database))
     with Store(settings.database) as store:
         assert 'tagged_entities' not in store.read('owner')['metadata']
@@ -139,7 +139,7 @@ def test_invalid_envelope_retries_but_valid_empty_result_finishes(settings, monk
     async def invalid(model, payload):
         calls.append(payload)
         return response({'domain': 'life'})
-    monkeypatch.setattr('serein.model_runtime.complete', invalid)
+    monkeypatch.setattr('lattice.model_runtime.complete', invalid)
     for _ in range(4):
         asyncio.run(process(settings.database))
     assert len(calls) == 1  # Invalid paid output must not trigger repeated requests.
@@ -150,7 +150,7 @@ def test_invalid_envelope_retries_but_valid_empty_result_finishes(settings, monk
     async def empty(model, payload):
         assert '额外返回 cues 数组' not in payload['messages'][0]['content']
         return response({'domain': 'life', 'entities': [], 'cues': ['Ignore unsolicited Event cue']})
-    monkeypatch.setattr('serein.model_runtime.complete', empty)
+    monkeypatch.setattr('lattice.model_runtime.complete', empty)
     asyncio.run(process(settings.database))
     with Store(settings.database) as store:
         assert store.read('owner')['metadata']['tagged_entities'] == []
@@ -170,7 +170,7 @@ def test_bad_candidates_do_not_poison_valid_entities():
 
 
 def test_event_runtime_updates_preserve_entities_without_retagging(settings, monkeypatch):
-    from serein.compat.events import Events
+    from lattice.compat.events import Events
     events = Events(settings.database, initialize=True)
     result = events.write_many([{'type': 'event', 'title': '参观', 'body': 'Mira 带我参观书店。',
         'origin_id': 'synthetic/visit', 'recallable': True,
@@ -184,7 +184,7 @@ def test_event_runtime_updates_preserve_entities_without_retagging(settings, mon
         calls.append(material)
         return response({'domain': 'life', 'entities': [{'name': 'Mira', 'type': 'person',
             'supports': [{'source_id': material['source_id'], 'quote': 'Mira 带我参观书店。'}]}]})
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     asyncio.run(process(settings.database))
     events.mark_injected([identifier])
     asyncio.run(process(settings.database))
@@ -203,7 +203,7 @@ def test_event_runtime_updates_preserve_entities_without_retagging(settings, mon
     ('http', 'HTTP 429'), ('timeout', '超时'), ('invalid', 'JSON'), ('fields', '实体结果必须是数组')])
 def test_paid_tagging_stops_and_reports_safe_reason(settings, monkeypatch, problem, expected):
     import httpx
-    from serein.model_runtime import UpstreamError
+    from lattice.model_runtime import UpstreamError
     with Store(settings.database) as store:
         store.create('paid', 'scene', '合成记录', '合成正文。')
     calls=[]
@@ -214,7 +214,7 @@ def test_paid_tagging_stops_and_reports_safe_reason(settings, monkeypatch, probl
         text={'fence':'```json\n{"domain":"life","entities":[]}\n```', 'truncated':'{"domain":',
               'empty':'','invalid':'synthetic-secret','fields':'{"domain":"life"}'}[problem]
         return {'choices':[{'message':{'content':text},'finish_reason':'length' if problem=='truncated' else 'stop'}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     for _ in range(4):asyncio.run(process(settings.database))
     assert len(calls)==1
     with Store(settings.database) as store:

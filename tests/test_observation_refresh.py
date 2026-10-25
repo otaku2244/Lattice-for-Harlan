@@ -1,9 +1,9 @@
 import json
 import httpx
 import pytest
-from serein.chat_observation import ChatObservation
-from serein.chat_state import recent_deliveries
-from serein.core.store import Store, encode
+from lattice.chat_observation import ChatObservation
+from lattice.chat_state import recent_deliveries
+from lattice.core.store import Store, encode
 from test_public_settings import deployment, configure
 
 
@@ -71,8 +71,8 @@ def test_host_delivery_delta_keeps_acknowledgements_read_only(deployment):
 def test_stream_diagnostics_and_success_receipts_remain_separate(deployment,monkeypatch,ending,expected):
     settings,client=deployment
     configure(client)
-    monkeypatch.setattr('serein.configured_models.memory_ready',lambda _:True)
-    monkeypatch.setattr('serein.application.Services.recall',lambda *a,**kw:{
+    monkeypatch.setattr('lattice.configured_models.memory_ready',lambda _:True)
+    monkeypatch.setattr('lattice.application.Services.recall',lambda *a,**kw:{
         'context':'Synthetic private memory body','selected_refs':['scene:s'],
         'cards':[{'id':'scene:s','title':'Synthetic memory','text':'Synthetic private memory body'}]})
     original=httpx.AsyncClient
@@ -80,7 +80,7 @@ def test_stream_diagnostics_and_success_receipts_remain_separate(deployment,monk
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kw:original(transport=httpx.MockTransport(
         lambda req:httpx.Response(200,text=raw)),**kw))
     result=client.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'Question'}],
-        'stream':True,'serein':{'memory':True}})
+        'stream':True,'lattice':{'memory':True}})
     assert 'Synthetic answer' in result.text
     payload=client.get('/api/gateway-injections').json()['items'][0]['payload']
     assert payload['request_status']==expected and payload['prepared_ids']==['scene:s']

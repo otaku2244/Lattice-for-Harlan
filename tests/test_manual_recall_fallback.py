@@ -13,13 +13,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from serein.application import Application, Services
-from serein.config import Settings
-from serein.core.store import Store, encode
-from serein.recall.entities import ensure_tables, evidence_stamp
-from serein.recall.index import build_index, content_stamp
-from serein.recall.manual import fallback_lookup
-from serein.recall.service import Recall
+from lattice.application import Application, Services
+from lattice.config import Settings
+from lattice.core.store import Store, encode
+from lattice.recall.entities import ensure_tables, evidence_stamp
+from lattice.recall.index import build_index, content_stamp
+from lattice.recall.manual import fallback_lookup
+from lattice.recall.service import Recall
 
 
 class ManualFallbackTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class ManualFallbackTests(unittest.TestCase):
         build_index(self.settings.database, self.settings.index)
 
     def tool(self):
-        from serein.api.mcp import create_server
+        from lattice.api.mcp import create_server
         server = create_server(Application(self.settings))
         return server, server._tool_manager.get_tool('recall_memory').fn
 
@@ -158,8 +158,8 @@ class ManualFallbackTests(unittest.TestCase):
         configured = replace(self.settings, embedding={'endpoint':'https://unused.invalid'})
         engine = Mock(policy=SimpleNamespace(direct_threshold=.65))
         engine.run.side_effect = [{'status':'no_match','method':'semantic'}, {'status':'no_match'}]
-        with patch('serein.configured_models.effective_settings', return_value=configured) as effective, \
-                patch('serein.application.Recall', return_value=engine) as factory:
+        with patch('lattice.configured_models.effective_settings', return_value=configured) as effective, \
+                patch('lattice.application.Recall', return_value=engine) as factory:
             Services(self.settings).recall('q', method=None, manual_fallback=True)
         effective.assert_called_once()
         factory.assert_called_once_with(configured)
@@ -238,14 +238,14 @@ class ManualFallbackTests(unittest.TestCase):
         self.assertEqual(self.retry()['selected_refs'], ['scene:scene_allowed'])
 
     def test_configuration_failure_never_constructs_fallback_engine(self):
-        with patch('serein.configured_models.effective_settings', side_effect=ValueError('Prepare selected model')), \
-                patch('serein.application.Recall') as factory:
+        with patch('lattice.configured_models.effective_settings', side_effect=ValueError('Prepare selected model')), \
+                patch('lattice.application.Recall') as factory:
             with self.assertRaisesRegex(ValueError, 'Prepare selected model'):
                 Services(self.settings).recall('q', method=None, manual_fallback=True)
         factory.assert_not_called()
 
     def test_domain_suppression_is_not_reported_as_route_skip(self):
-        from serein.api.read_text import recall_text
+        from lattice.api.read_text import recall_text
         text = recall_text({'status':'no_match', 'suppressed':{'domain_excluded':1},
             'manual_fallback':{'primary_status':'no_match', 'primary_suppressed':{'domain_explicit_only':2}}},
             with_evidence=False)
@@ -254,14 +254,14 @@ class ManualFallbackTests(unittest.TestCase):
         self.assertNotIn('published_skip_route', text)
 
     def test_fallback_does_not_expand_arc_menus(self):
-        with patch('serein.recall.rendering._arcs', side_effect=AssertionError('broader menu read')):
+        with patch('lattice.recall.rendering._arcs', side_effect=AssertionError('broader menu read')):
             result = self.retry()
         self.assertEqual(result['selected_refs'], ['scene:scene_allowed'])
         self.assertEqual(result['menus_included'], [])
         self.assertNotIn('[arc_materials', result['context'])
 
     def test_final_materialization_rechecks_state_and_revision(self):
-        from serein.core.reader import Reader
+        from lattice.core.reader import Reader
         original = Reader.read
         for change in ('state','revision'):
             seen = []

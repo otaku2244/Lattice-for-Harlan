@@ -1,7 +1,7 @@
 import re
 import pytest
 from test_live_clients import live
-from serein.core.store import Store
+from lattice.core.store import Store
 
 
 def create(client,title,content):
@@ -29,16 +29,16 @@ def test_reviewed_relation_projects_atomically_and_can_be_removed(live):
     response=client.post('/api/scene-edge-proposals/review',json={'proposal_id':proposal,'decision':'accept','confirm':'ACCEPT_SCENE_EDGE'})
     assert response.status_code==200,response.text
     edge=client.get('/api/scene-edges').json()['edges'][0]
-    projection=client.post('/api/serein/memory-projection',json={}).json()
+    projection=client.post('/api/lattice/memory-projection',json={}).json()
     assert len(projection['edges'])==1
     with Store(settings.database,read_only=True) as store:
         assert store.conn.execute('SELECT active FROM scene_relations').fetchone()[0]==1
     response=client.request('DELETE','/api/scene-edges/'+edge['edge_id'],json={'scene_id':source,'confirm':'DELETE_SCENE_EDGE'})
     assert response.status_code==200,response.text
-    assert client.post('/api/serein/memory-projection',json={}).json()['edges']==[]
+    assert client.post('/api/lattice/memory-projection',json={}).json()['edges']==[]
     response=client.post('/api/scene-edges/'+edge['edge_id']+'/restore',json={'confirm':'RESTORE_SCENE_EDGE'})
     assert response.status_code==200,response.text
-    assert len(client.post('/api/serein/memory-projection',json={}).json()['edges'])==1
+    assert len(client.post('/api/lattice/memory-projection',json={}).json()['edges'])==1
 
 
 def test_changed_scene_cannot_promote_old_proposal(live):
@@ -76,7 +76,7 @@ def test_imported_boundary_whitespace_keeps_reviewed_relation_visible(live):
             doc=store.read(key)
             store.revise(key,expected_revision=doc['revision'],title=doc['title'],
                          body_md='\n\n'+doc['body_md']+'\n')
-    projection=client.post('/api/serein/memory-projection',json={}).json()
+    projection=client.post('/api/lattice/memory-projection',json={}).json()
     assert len(projection['edges'])==1
     with Store(settings.database,read_only=True) as store:
         assert store.read(source)['body_md'].startswith('\n\n')

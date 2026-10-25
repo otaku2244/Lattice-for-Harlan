@@ -60,7 +60,7 @@ export function memoryAvailabilitySummary(config) {
 export async function prepareMemoryIndex({fetchImpl = fetch, loadSettings}) {
   let message;
   try {
-    const response = await fetchImpl('/__serein/settings/prepare-memory', {
+    const response = await fetchImpl('/__lattice/settings/prepare-memory', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
     });
     if (!response.ok) throw new Error('prepare_failed');
@@ -91,7 +91,7 @@ export function indexSafetySummary(state = {}) {
 }
 
 export async function resumeIndex(state, {fetchImpl = fetch} = {}) {
-  const response = await fetchImpl('/__serein/settings/resume-index', {
+  const response = await fetchImpl('/__lattice/settings/resume-index', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({confirm:'RESUME_INDEX_EMBEDDING', recovery_token:state.recovery_token}),
   });
@@ -100,7 +100,7 @@ export async function resumeIndex(state, {fetchImpl = fetch} = {}) {
 }
 
 export async function readIndexStatus({fetchImpl = fetch} = {}) {
-  const response = await fetchImpl('/__serein/settings/index-status', {cache:'no-store'});
+  const response = await fetchImpl('/__lattice/settings/index-status', {cache:'no-store'});
   if (!response.ok) throw new Error('无法读取索引状态，请稍后刷新。');
   return response.json();
 }

@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 
 async function call(path='',body){
-  const response=await fetch('/__serein/migration'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const response=await fetch('/__lattice/migration'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const result=await response.json();
   if(!response.ok)throw new Error(result.detail || '旧库操作未完成');
   return result;
@@ -20,7 +20,7 @@ export function LegacyMigration(){
     setBackupBusy(true);setBackupMessage('正在准备并接收数据库备份，请保持页面打开…');
     try{
       // Fetch inside the signed-in page: mobile download managers may lose Basic auth.
-      const response=await fetch('/__serein/export/backup',{credentials:'same-origin',cache:'no-store'});
+      const response=await fetch('/__lattice/export/backup',{credentials:'same-origin',cache:'no-store'});
       if(!response.ok){
         const error=await response.json().catch(()=>null);
         throw new Error(response.status===401?'登录已失效，请刷新页面重新登录后下载。':error?.detail||'数据库备份未完成，请稍后重试。');
@@ -28,9 +28,9 @@ export function LegacyMigration(){
       const blob=await response.blob();
       if(!blob.size)throw new Error('收到的备份为空，请重试。');
       const url=URL.createObjectURL(blob),link=document.createElement('a');
-      link.href=url;link.download='serein-backup.db';document.body.appendChild(link);
+      link.href=url;link.download='lattice-backup.db';document.body.appendChild(link);
       link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60_000);
-      setBackupMessage('备份已接收，已请求浏览器保存 serein-backup.db。');
+      setBackupMessage('备份已接收，已请求浏览器保存 lattice-backup.db。');
     }catch(error){setBackupMessage(error instanceof TypeError?'备份连接中断，请保持网络稳定后重试。':error.message||'备份下载未完成，请重试。');}
     finally{setBackupBusy(false);}
   }
@@ -39,7 +39,7 @@ export function LegacyMigration(){
     async function refresh(){if(pending)return;pending=true;try{const data=await call();if(!disposed)setItems(data.items);}catch(error){if(!disposed)setMessage(error.message);}finally{pending=false;}}
     refresh();const timer=setInterval(refresh,3000);return()=>{disposed=true;clearInterval(timer);};
   },[]);
-  useEffect(()=>{fetch('/__serein/install-location').then(response=>response.ok?response.json():null)
+  useEffect(()=>{fetch('/__lattice/install-location').then(response=>response.ok?response.json():null)
     .then(value=>setInstallation(value)).catch(()=>{});},[]);
   async function previewPath(){
     const path=sourcePath.trim();if(!path || busy)return;
@@ -77,12 +77,12 @@ export function LegacyMigration(){
     <p>旧公开版的梦境与暗房 JSONL 一并迁入，暗房按房间保留当前正文、历史修订及锁定状态，已归档或撤回的内容不会自动公开。无需 diary.db；如备份另含正式日记库或窗影库，也会保留导入。早期已迁过的实例可在安装菜单 10 单独补漏，不需要重新打标或生成向量。</p>
     <p>旧边由程序转换，不调用模型。updates 转为 continues 并调整方向；无法确定的旧边保留原记录并报告。主域和实体打标、向量准备会调用“配置”页选定的模型；是否同时生成 cues 可选，打标失败不自动重试。</p>
     <p>旧原文库一并归档，可搜索并手动绑定到 Scene，不会自动重新整理或调用模型；不凭正文猜测旧绑定。记忆日期优先用旧 date，没有有效 date 时取 created 或 created_at。旧记忆 comments／年轮作为独立注脚迁入，保留内容、作者和时间。已迁入的实例可用菜单 10 补旧原文、缺失日期和记忆注脚，不重复导入正文。</p>
-    <label className="settings-field"><span>旧库位置（运行 Serein 的机器上的绝对路径）</span>
+    <label className="settings-field"><span>旧库位置（运行 Lattice 的机器上的绝对路径）</span>
       <input value={sourcePath} disabled={busy} placeholder="/srv/old-memory 或 /home/user/Ombre-Brain/buckets"
         onChange={event=>setSourcePath(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')previewPath();}} /></label>
     <div className="settings-actions"><button type="button" disabled={busy||!sourcePath.trim()} onClick={previewPath}>读取路径并预览</button></div>
     {installation?.legacySourceRoot&&<p className="import-help">Docker 当前只读来源：<code>{installation.legacySourceRoot}</code>。{installation.legacySourceConfigured?'可输入该目录或其子路径。':'其他目录先在安装菜单 7 授权；也可把备份放到此目录。'}</p>}
-    <p className="import-help">如果 Serein 运行在 Docker 中，先从安装菜单 7 授权旧库目录，服务会短暂重建；网页不能直接读取浏览器设备上的路径。原库停止写入后，再确认迁移。</p>
+    <p className="import-help">如果 Lattice 运行在 Docker 中，先从安装菜单 7 授权旧库目录，服务会短暂重建；网页不能直接读取浏览器设备上的路径。原库停止写入后，再确认迁移。</p>
     <p className="import-help">或者上传 tar / tar.gz 备份：</p>
     <label className={'import-upload'+(dragging?' is-dragging':'')} onDragOver={event=>{event.preventDefault();if(!busy)setDragging(true);}}
       onDragLeave={()=>setDragging(false)} onDrop={event=>{event.preventDefault();setDragging(false);if(!busy)upload(event.dataTransfer.files?.[0]);}}>
@@ -97,7 +97,7 @@ export function LegacyMigration(){
       {item.summary.history?<><p>历史数据：梦境 {item.summary.history.dreams || 0} · 窗影 {item.summary.history.shadows || 0} · 正式日记 {item.summary.history.diaries || 0} · 暗房 {item.summary.history.darkroom || 0} · 日记评论 {item.summary.history.comments || 0} · 修订 {item.summary.history.revisions || 0}</p>{item.summary.history.warnings?.map((warning,index)=><p key={index}>{warning}</p>)}</>:<p>这是旧版本预览，请重新预览同一备份以检查梦境、日记和暗房。</p>}
       {item.summary.memory_comments?<p>记忆注脚／旧年轮：{item.summary.memory_comments.comments} 条 · 涉及 {item.summary.memory_comments.memories} 条旧记忆</p>:<p>请重新预览同一备份，以检查记忆注脚／旧年轮。</p>}
       {item.summary.originals?<><p>旧聊天原文：{item.summary.originals.messages} 条{item.summary.originals.path?` · ${item.summary.originals.path}`:''}</p>{item.summary.originals.warnings?.map((warning,index)=><p key={index}>{warning}</p>)}</>:<p>请重新预览同一备份，以检查旧原文库和日期。</p>}
-      {item.source_path&&<p className="import-help">只读来源：<code>{item.source_path}</code> · <a className="settings-link" href={'/__serein/migration/'+item.id+'/export'} download>导出旧库 ZIP</a></p>}
+      {item.source_path&&<p className="import-help">只读来源：<code>{item.source_path}</code> · <a className="settings-link" href={'/__lattice/migration/'+item.id+'/export'} download>导出旧库 ZIP</a></p>}
       <p>{item.summary.edge_sources?.map(source=>`${source.path}：${source.count} 条`).join('；') || item.summary.edge_warning || '没有找到旧关系边文件，请核对备份是否带有旧服务实际使用的 state 目录。缺少旧边不影响单独导入正文。'}</p>
       {item.options&&<p>续跑沿用：{item.options.user_name} / {item.options.ai_name}{item.options.aliases.length?' · '+item.options.aliases.join('、'):''}</p>}
       {item.options&&<label className="settings-toggle"><span><strong>本批迁移：打标时生成 cues</strong><small>暂停或失败后可修改，仅影响尚未成功打标的条目；保留已保存的 cues，不重跑成功条目。</small></span><input type="checkbox" role="switch" checked={cueChoices[item.id]??item.options.generate_cues??true} disabled={busy||active||task.status==='completed'} onChange={event=>setCueChoices({...cueChoices,[item.id]:event.target.checked})}/></label>}

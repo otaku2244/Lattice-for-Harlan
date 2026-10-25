@@ -26,7 +26,7 @@ export function createNarrativePreviewJobs({ now = Date.now, ttlMs = 600_000, ti
       };
       const fail = (error) => {
         if (job.state !== "pending") return;
-        console.error("[serein-memory-bridge] Narrative preview failed", error);
+        console.error("[lattice-memory-bridge] Narrative preview failed", error);
         const writerTimeout = error?.message === "narrative_writer_timeout";
         const timedOut = writerTimeout || ["AbortError", "TimeoutError"].includes(error?.name);
         finish({

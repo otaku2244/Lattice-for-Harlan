@@ -21,12 +21,12 @@ from urllib.error import HTTPError
 
 def exclusive_lock(path):
     # The source file is stdlib-only: stop/status must work after a failed pip install.
-    source=Path(__file__).resolve().parents[1]/'src'/'serein'/'file_lock.py'
+    source=Path(__file__).resolve().parents[1]/'src'/'lattice'/'file_lock.py'
     if source.exists():
-        spec=importlib.util.spec_from_file_location('serein_process_lock',source)
+        spec=importlib.util.spec_from_file_location('lattice_process_lock',source)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         return module.exclusive_lock(path)
-    from serein.file_lock import exclusive_lock as installed_lock
+    from lattice.file_lock import exclusive_lock as installed_lock
     return installed_lock(path)
 
 
@@ -54,20 +54,20 @@ def command(deploy, service):
     values = env_file(deploy)
     root = deploy.parent
     env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONUTF8='1')
-    env.update(SEREIN_HTTP_TOKEN_FILE=str(deploy/'secrets'/'api-token'),
-               SEREIN_MEMORY_TOKEN_FILE=str(deploy/'secrets'/'api-token'),
-               SEREIN_WEB_AUTH_FILE=str(deploy/'secrets'/'web-auth.json'),
-               SEREIN_MEMORY_URL=f"http://127.0.0.1:{config['memory_port']}",
-               SEREIN_PREVIEW_PORT=str(config['preview_port']),
-               SEREIN_GATEWAY_PORT=values['SEREIN_PORT'],
-               SEREIN_GATEWAY_BIND=values['SEREIN_BIND'],
-               SEREIN_PUBLIC_ORIGIN=values.get('SEREIN_PUBLIC_ORIGIN',''),
-               SEREIN_ROUTE_DRAFT_FILE=str(deploy/'runtime'/'semantic-route-draft.json'))
+    env.update(LATTICE_HTTP_TOKEN_FILE=str(deploy/'secrets'/'api-token'),
+               LATTICE_MEMORY_TOKEN_FILE=str(deploy/'secrets'/'api-token'),
+               LATTICE_WEB_AUTH_FILE=str(deploy/'secrets'/'web-auth.json'),
+               LATTICE_MEMORY_URL=f"http://127.0.0.1:{config['memory_port']}",
+               LATTICE_PREVIEW_PORT=str(config['preview_port']),
+               LATTICE_GATEWAY_PORT=values['LATTICE_PORT'],
+               LATTICE_GATEWAY_BIND=values['LATTICE_BIND'],
+               LATTICE_PUBLIC_ORIGIN=values.get('LATTICE_PUBLIC_ORIGIN',''),
+               LATTICE_ROUTE_DRAFT_FILE=str(deploy/'runtime'/'semantic-route-draft.json'))
     # Credentials must come from this instance, never a different shell instance.
-    env.pop('SEREIN_HTTP_TOKEN', None)
-    env.pop('SEREIN_MEMORY_TOKEN', None)
+    env.pop('LATTICE_HTTP_TOKEN', None)
+    env.pop('LATTICE_MEMORY_TOKEN', None)
     if service == 'memory':
-        args = [sys.executable, '-m', 'serein.launch', '--config', str(deploy/'config.toml'),
+        args = [sys.executable, '-m', 'lattice.launch', '--config', str(deploy/'config.toml'),
                 'http', '--live', '--host', '127.0.0.1', '--port', str(config['memory_port'])]
     else:
         node = shutil.which('node')
@@ -80,7 +80,7 @@ def command(deploy, service):
 def ready(deploy, service):
     config = settings(deploy)
     values = env_file(deploy)
-    port = config['memory_port'] if service == 'memory' else int(values['SEREIN_PORT'])
+    port = config['memory_port'] if service == 'memory' else int(values['LATTICE_PORT'])
     path = '/health' if service == 'memory' else '/'
     try:
         with urlopen(f'http://127.0.0.1:{port}{path}', timeout=2) as response:
@@ -107,7 +107,7 @@ def supervise(deploy, service):
     with exclusive_lock(runtime/f'{service}.service.lock'):
         args, env = command(deploy, service)
         config = settings(deploy)
-        ports = [config['memory_port']] if service == 'memory' else [config['preview_port'], int(env_file(deploy)['SEREIN_PORT'])]
+        ports = [config['memory_port']] if service == 'memory' else [config['preview_port'], int(env_file(deploy)['LATTICE_PORT'])]
         # Fail before creating a child if another instance already owns a port.
         check_ports(ports)
         with socket.socket() as server:

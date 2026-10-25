@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from serein.recall import typed_surface
-from serein.recall.germany.candidates import CandidateGateway
+from lattice.recall import typed_surface
+from lattice.recall.germany.candidates import CandidateGateway
 
 
 def candidate(kind, owner_id, score):

@@ -8,7 +8,7 @@ export function ModelDiscovery({upstream,onAdd}) {
     pending.current?.abort();const controller=new AbortController();pending.current=controller;
     setBusy(true);setMessage('正在拉取…');setSelected([]);
     try{
-      const response=await fetch('/__serein/settings/models/discover',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      const response=await fetch('/__lattice/settings/models/discover',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({
         protocol:upstream.protocol,upstream_id:upstream.id,base_url:upstream.base_url,api_key:upstream.api_key||'',clear_key:upstream.clear_key||false})});
       const result=await response.json();
       if(controller.signal.aborted)return;

@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.deployment import read_settings, task_model
+from lattice.api.http import create_app
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.deployment import read_settings, task_model
 
 
 def client_for(tmp_path):

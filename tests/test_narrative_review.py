@@ -1,9 +1,9 @@
 from test_live_clients import live
 from test_live_events import item
 from test_live_narratives import seed
-from serein.compat.narratives import narrative_transaction, RevisionInbox
-from serein.core.reader import Reader
-from serein.compat.germany.narrative_materials import narrative_preview_fingerprint
+from lattice.compat.narratives import narrative_transaction, RevisionInbox
+from lattice.core.reader import Reader
+from lattice.compat.germany.narrative_materials import narrative_preview_fingerprint
 
 
 def test_dismiss_withdraws_only_new_arc_binding_and_preserves_written_sources(live):

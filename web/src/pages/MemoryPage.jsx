@@ -81,8 +81,8 @@ function relationLabel(relation) {
   return labels?.[relation.direction] ?? labels?.symmetric ?? relation.type ?? "有关联";
 }
 
-function sereinSourceIdForScene(scene) {
-  if (scene?.sourceKind !== "serein-live-readonly") return "";
+function latticeSourceIdForScene(scene) {
+  if (scene?.sourceKind !== "lattice-live-readonly") return "";
   if (typeof scene.canonicalSceneId === "string" && scene.canonicalSceneId) {
     return scene.canonicalSceneId;
   }
@@ -93,7 +93,7 @@ function sereinSourceIdForScene(scene) {
 }
 
 const memoryTypeLabels = { scene: "Scene", event: "事件", fact: "事实" };
-const factEventCacheKey = "serein.memory.fact-events.v2";
+const factEventCacheKey = "lattice.memory.fact-events.v2";
 const factEventCacheMaxAgeMs = 5 * 60 * 1000;
 let factEventListLoadInFlight = null;
 
@@ -161,7 +161,7 @@ async function requestFactEvents({ type, status, query = "", includeSources = fa
   const items = [];
   let offset = 0;
   do {
-    const response = await fetch("/__serein/live/fact-events", {
+    const response = await fetch("/__lattice/live/fact-events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, status, query, includeSources, limit: 500, offset }),
@@ -249,7 +249,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
       setState("saving");
       setMessage("正在读取原文…");
       try {
-        const response = await fetch("/__serein/memory/event-detail", {
+        const response = await fetch("/__lattice/memory/event-detail", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ itemId: item.item_id }),
@@ -286,7 +286,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setSourceState("loading");
     setSourceMessage("");
     try {
-      const response = await fetch("/__serein/memory/source-candidates", {
+      const response = await fetch("/__lattice/memory/source-candidates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id, query, beforeId, afterId, limit: 40 }),
@@ -377,7 +377,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setMergeState("loading");
     setMergeMessage("正在找相邻事件…");
     try {
-      const response = await fetch(`/__serein/memory/merge-candidates?itemId=${encodeURIComponent(item.item_id)}`);
+      const response = await fetch(`/__lattice/memory/merge-candidates?itemId=${encodeURIComponent(item.item_id)}`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) throw new Error(payload.message || "读取相邻事件失败");
       setMergeCandidates(Array.isArray(payload.candidates) ? payload.candidates : []);
@@ -408,7 +408,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setMergeState("saving");
     setMergeMessage("正在合并…");
     try {
-      const response = await fetch("/__serein/memory/merge-fact-events", {
+      const response = await fetch("/__lattice/memory/merge-fact-events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id, mergeIds }),
@@ -441,7 +441,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setState("saving");
     setMessage("正在重写，通常需要 20~90 秒…");
     try {
-      const response = await fetch("/__serein/memory/rewrite-fact-event", {
+      const response = await fetch("/__lattice/memory/rewrite-fact-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id }),
@@ -477,7 +477,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     const after = draft.sources.map(eventSourceKey).join("\n");
     const sourcesChanged = before !== after;
     try {
-      const response = await fetch("/__serein/memory/revise-fact-event", {
+      const response = await fetch("/__lattice/memory/revise-fact-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -519,7 +519,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/revise-fact-event", {
+      const response = await fetch("/__lattice/memory/revise-fact-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id, recallable: value }),
@@ -539,7 +539,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/set-fact-event-status", {
+      const response = await fetch("/__lattice/memory/set-fact-event-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id, status }),
@@ -558,7 +558,7 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/delete-fact-event", {
+      const response = await fetch("/__lattice/memory/delete-fact-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.item_id }),
@@ -754,9 +754,16 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
           ) : null}
         </div>
       ) : item.item_type === "event" ? (
-        <div className="scene-detail__body"><p>{item.body}</p></div>
+        <section className="fact-event-detail__card">
+          <header>
+            <h3>经过</h3>
+            <span>{factEventSourceCount(item)} 条原文</span>
+          </header>
+          <p>{item.body}</p>
+        </section>
       ) : null}
-      {item.item_type === "event" && <EventMailboxSelect eventId={item.item_id} disabled={state === "saving" || editing} />}      {mergeOpen ? (
+      {item.item_type === "event" && <EventMailboxSelect eventId={item.item_id} disabled={state === "saving" || editing} />}
+      {mergeOpen ? (
         <section className="fact-event-sources fact-event-merge">
           <header>
             <h3>合并相邻事件</h3>
@@ -802,15 +809,18 @@ function FactEventDetail({ item, onClose, onRevised, onStatusChanged, onDeleted,
             </div>
           ) : null}
         </section>
-      ) : null}{!editing ? (<section className="fact-event-sources">
-        <header><h3>原文</h3><span>{item.source_refs?.length || 0}</span></header>
-        {(item.source_refs || []).map((source) => (
-          <article key={`${source.source_system}:${source.session_id}:${source.message_id}`}>
-            <div><strong>{identityName(source.role)}</strong><time>{sourceTimeLabel(source.created_at)}</time></div>
-            <p>{source.content || `原文 #${source.message_id}`}</p>
-          </article>
-        ))}
-      </section>) : null}
+      ) : null}
+      {!editing ? (
+        <section className="fact-event-sources fact-event-detail__sources">
+          <header><h3>原文</h3><span>{item.source_refs?.length || 0} 条</span></header>
+          {(item.source_refs || []).map((source) => (
+            <article key={`${source.source_system}:${source.session_id}:${source.message_id}`}>
+              <div><strong>{identityName(source.role)}</strong><time>{sourceTimeLabel(source.created_at)}</time></div>
+              <p>{source.content || `原文 #${source.message_id}`}</p>
+            </article>
+          ))}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -819,7 +829,7 @@ function SceneDomainEditor({ scene, onSaved }) {
   const [domainOptions,setDomainOptions]=useState(canonicalDomainPolicies);
   useEffect(()=>{let active=true;instanceSettings().then(config=>{if(active)setDomainOptions(config.tagging.domains);}).catch(()=>{});return()=>{active=false;};},[]);
   const currentDomain = domainOptions.find((item) => item.key === scene.bucketDomain);
-  const sourceId = sereinSourceIdForScene(scene);
+  const sourceId = latticeSourceIdForScene(scene);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(scene.bucketDomain || "general");
   const [state, setState] = useState("idle");
@@ -830,12 +840,12 @@ function SceneDomainEditor({ scene, onSaved }) {
     if (!sourceId || state === "saving") return;
     const target = domainOptions.find((item) => item.key === draft);
     if (!target) return;
-    if (!window.confirm(`把「${scene.title}」的主域改为「${target.label}」？\n\n这会写回线上 Serein。`)) return;
+    if (!window.confirm(`把「${scene.title}」的主域改为「${target.label}」？\n\n这会写回线上 Lattice。`)) return;
 
     setState("saving");
     setMessage("");
     try {
-      const response = await fetch("/__serein/memory/edit-scene-domain", {
+      const response = await fetch("/__lattice/memory/edit-scene-domain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sourceId, domain: draft }),
@@ -899,10 +909,10 @@ export function MemoryPage() {
   async function exportMemories() {
     setExporting(true);
     try {
-      const response=await fetch("/__serein/export/markdown");
+      const response=await fetch("/__lattice/export/markdown");
       if(!response.ok)throw new Error("export_failed");
       const url=URL.createObjectURL(await response.blob());
-      const link=document.createElement("a");link.href=url;link.download="serein-memories.zip";link.click();
+      const link=document.createElement("a");link.href=url;link.download="lattice-memories.zip";link.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch {setSceneActionState("error");setSceneActionMessage("导出失败，请稍后重试。");}
     finally{setExporting(false);}
@@ -911,8 +921,8 @@ export function MemoryPage() {
     setSceneActionState("saving");
     try {
       for(const relation of record.relations || []) {
-        const response=await fetch("/__serein/memory/delete-scene-edge",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({edgeId:relation.edgeId,sceneId:sereinSourceIdForScene(selectedScene)})});
+        const response=await fetch("/__lattice/memory/delete-scene-edge",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({edgeId:relation.edgeId,sceneId:latticeSourceIdForScene(selectedScene)})});
         if(!response.ok)throw new Error("unlink_failed");
       }
       const updated=sceneRecords.map(scene=>{
@@ -961,7 +971,7 @@ export function MemoryPage() {
   const [sceneActionState, setSceneActionState] = useState("idle");
   const [sceneActionMessage, setSceneActionMessage] = useState("");
   const [pendingSourceSceneId, setPendingSourceSceneId] = useState(() => (
-    window.localStorage.getItem("serein.memory.open-source-id") || ""
+    window.localStorage.getItem("lattice.memory.open-source-id") || ""
   ));
   const detailRef = useRef(null);
 
@@ -1073,8 +1083,8 @@ export function MemoryPage() {
       const sourceId = String(event.detail?.sourceId || "").trim();
       if (sourceId) setPendingSourceSceneId(sourceId);
     };
-    window.addEventListener("serein:open-memory-scene", openFromRecall);
-    return () => window.removeEventListener("serein:open-memory-scene", openFromRecall);
+    window.addEventListener("lattice:open-memory-scene", openFromRecall);
+    return () => window.removeEventListener("lattice:open-memory-scene", openFromRecall);
   }, []);
 
   useEffect(() => {
@@ -1085,7 +1095,7 @@ export function MemoryPage() {
     if (!matchingScene) return;
     setSelectedSceneId(matchingScene.id);
     setPendingSourceSceneId("");
-    window.localStorage.removeItem("serein.memory.open-source-id");
+    window.localStorage.removeItem("lattice.memory.open-source-id");
   }, [pendingSourceSceneId, sceneRecords]);
 
   const filteredScenes = useMemo(() => {
@@ -1184,7 +1194,7 @@ export function MemoryPage() {
   const toggleFavorite = async (sceneId) => {
     const scene = sceneRecords.find(item => item.id === sceneId);
     try {
-      const saved = await savePersonal("favorite", sereinSourceIdForScene(scene), { favorite: !scene.favorite }, sereinSourceIdForScene(scene));
+      const saved = await savePersonal("favorite", latticeSourceIdForScene(scene), { favorite: !scene.favorite }, latticeSourceIdForScene(scene));
       updateScene(sceneId, () => ({ favorite: saved.value.favorite }));
       setSceneActionMessage("");
     } catch (error) { setSceneActionMessage(error.message); setSceneActionState("error"); }
@@ -1223,7 +1233,7 @@ export function MemoryPage() {
   const updateSelectedSceneStatus = async (status) => {
     if (!selectedSceneCount) return;
     const targets = sceneRecords.filter((scene) => selectedSceneIds.has(scene.id));
-    if (targets.some((scene) => !sereinSourceIdForScene(scene) || !scene.sourceUpdatedAt)) {
+    if (targets.some((scene) => !latticeSourceIdForScene(scene) || !scene.sourceUpdatedAt)) {
       setSceneActionState("error");
       setSceneActionMessage("所选内容里有尚未接入服务端写入的 Scene。");
       return;
@@ -1232,11 +1242,11 @@ export function MemoryPage() {
     setSceneActionMessage("");
     try {
       const responses = await Promise.all(targets.map(async (scene) => {
-        const response = await fetch("/__serein/memory/set-scene-status", {
+        const response = await fetch("/__lattice/memory/set-scene-status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sceneId: sereinSourceIdForScene(scene),
+            sceneId: latticeSourceIdForScene(scene),
             expectedUpdatedAt: scene.sourceUpdatedAt,
             status: status === "已沉底" ? "archived" : "active",
             ...(status === "已沉底" ? {} : { restoreSurface: true }),
@@ -1268,7 +1278,7 @@ export function MemoryPage() {
     const deletedIds = new Set(selectedSceneIds);
     const sourceIds = sceneRecords
       .filter((scene) => deletedIds.has(scene.id))
-      .map(sereinSourceIdForScene)
+      .map(latticeSourceIdForScene)
       .filter(Boolean);
     if (sourceIds.length !== deletedIds.size) {
       setSceneActionState("error");
@@ -1278,7 +1288,7 @@ export function MemoryPage() {
     }
     setSceneActionState("saving");
     try {
-      const response = await fetch("/__serein/memory/delete-scenes", {
+      const response = await fetch("/__lattice/memory/delete-scenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneIds: sourceIds }),
@@ -1335,12 +1345,12 @@ export function MemoryPage() {
       .split(/\n\s*\n/)
       .map((paragraph) => paragraph.trim())
       .filter(Boolean);
-    const sourceId = sereinSourceIdForScene(selectedScene);
+    const sourceId = latticeSourceIdForScene(selectedScene);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !title || !body.length || !sourceId || !selectedScene.sourceUpdatedAt) return;
     setSceneActionState("saving");
     setSceneActionMessage("");
     try {
-      const response = await fetch("/__serein/memory/edit-scene", {
+      const response = await fetch("/__lattice/memory/edit-scene", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1374,7 +1384,7 @@ export function MemoryPage() {
   const deleteAnnotation = async (sceneId, annotationId) => {
     const scene = sceneRecords.find(item => item.id === sceneId);
     const note = scene.annotations.find(item => item.id === annotationId);
-    try { await savePersonal("annotation", annotationId, note, sereinSourceIdForScene(scene), true); }
+    try { await savePersonal("annotation", annotationId, note, latticeSourceIdForScene(scene), true); }
     catch (error) { setSceneActionMessage(error.message); setSceneActionState("error"); return; }
     updateScene(sceneId, (scene) => ({
       annotations: scene.annotations.filter((annotation) => annotation.id !== annotationId),
@@ -1387,7 +1397,7 @@ export function MemoryPage() {
     const content = annotationDraft.trim();
     const annotationId = `annotation-${createUuid()}`;
     const note = { content, ...defaultAnnotationIdentity, createdAt: new Date().toISOString() };
-    try { await savePersonal("annotation", annotationId, note, sereinSourceIdForScene(selectedScene)); }
+    try { await savePersonal("annotation", annotationId, note, latticeSourceIdForScene(selectedScene)); }
     catch (error) { setSceneActionMessage(error.message); setSceneActionState("error"); return; }
     updateScene(selectedScene.id, (scene) => ({
       annotations: [
@@ -1928,7 +1938,7 @@ export function MemoryPage() {
                         </button>
                       </>
                     ) : (
-                      <button type="button" onClick={() => beginEditingScene(selectedScene)} disabled={!sereinSourceIdForScene(selectedScene) || !selectedScene.sourceUpdatedAt}>
+                      <button type="button" onClick={() => beginEditingScene(selectedScene)} disabled={!latticeSourceIdForScene(selectedScene) || !selectedScene.sourceUpdatedAt}>
                         <PencilSimple size={14} weight="light" aria-hidden="true" />
                         编辑记忆
                       </button>
@@ -1996,7 +2006,7 @@ export function MemoryPage() {
 
               <SceneEvidenceEditor
                 key={`scene-evidence-${selectedScene.id}`}
-                sceneId={sereinSourceIdForScene(selectedScene)}
+                sceneId={latticeSourceIdForScene(selectedScene)}
                 sceneTitle={selectedScene.title}
               />
 

@@ -6,9 +6,9 @@ import pytest
 pytest.importorskip("httpx")
 import httpx
 
-from serein.adapters.embedding import EmbeddingClient
-from serein.core import Store
-from serein.core.search import build_index
+from lattice.adapters.embedding import EmbeddingClient
+from lattice.core import Store
+from lattice.core.search import build_index
 
 
 @pytest.fixture
@@ -22,8 +22,8 @@ def client(tmp_path, monkeypatch):
     with sqlite3.connect(index) as conn:
         conn.execute("INSERT INTO settings VALUES ('embedding_profile',?)", (json.dumps(profile),))
         conn.execute("INSERT INTO settings VALUES ('embedding_dimension','2')")
-    monkeypatch.setenv("SEREIN_TEST_EMBEDDING_KEY", "test-secret")
-    return EmbeddingClient(database, index, "https://embedding.example/v1/embeddings", "SEREIN_TEST_EMBEDDING_KEY")
+    monkeypatch.setenv("LATTICE_TEST_EMBEDDING_KEY", "test-secret")
+    return EmbeddingClient(database, index, "https://embedding.example/v1/embeddings", "LATTICE_TEST_EMBEDDING_KEY")
 
 
 def test_query_preserves_cached_input_contract_and_dimension(client):

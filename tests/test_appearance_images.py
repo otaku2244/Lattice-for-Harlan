@@ -2,11 +2,11 @@ import base64
 import json
 import pytest
 from fastapi.testclient import TestClient
-from serein.api.http import create_app
-from serein.api.appearance import MAX_REQUEST_BYTES, PREFIX
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store
+from lattice.api.http import create_app
+from lattice.api.appearance import MAX_REQUEST_BYTES, PREFIX
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store
 
 PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7L8AAAAASUVORK5CYII='
 GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'

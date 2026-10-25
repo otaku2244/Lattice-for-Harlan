@@ -4,13 +4,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from test_public_features import settings, ingest, output_for, synthetic_runner, raw_archive
-from serein.core.store import Store, encode
-from serein.extensions import pipeline as p
-from serein.extensions import pipeline_tracks as tracks
-from serein.extensions import pipeline_latest as latest
-from serein.extensions.pipeline_rules import normalize_event_track_message_output
-from serein.extensions.pipeline_rules import flushable_dialogue_units
-from serein.deployment import save_settings
+from lattice.core.store import Store, encode
+from lattice.extensions import pipeline as p
+from lattice.extensions import pipeline_tracks as tracks
+from lattice.extensions import pipeline_latest as latest
+from lattice.extensions.pipeline_rules import normalize_event_track_message_output
+from lattice.extensions.pipeline_rules import flushable_dialogue_units
+from lattice.deployment import save_settings
 
 
 def card(key, **values):
@@ -84,7 +84,7 @@ def test_daytime_gate_accumulates_within_session_and_keeps_originals(settings, m
                              'WHERE output_json IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()[0])
         requests.append(request)
         return {'choices': [{'message': {'content': json.dumps(output_for('track_router', request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     archive = raw_archive(settings)
     def add(rows):
         archive.ingest([{k: v for k, v in row.items() if k != 'id'} for row in rows], source='test')

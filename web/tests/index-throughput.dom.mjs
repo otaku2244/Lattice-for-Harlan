@@ -18,8 +18,8 @@ const state={settings_version:0,identity:{user_name:'User',ai_name:'AI'},models:
   dream:{daily_probability:.4,main_prompt:''},index_status:{status:'ready',pending:0},memory_ready:false};
 const saves=[];
 globalThis.fetch=async(url,options={})=>{
-  if(url==='/__serein/settings/index-status')return {ok:true,json:async()=>structuredClone(state.index_status)};
-  assert.equal(url,'/__serein/settings');
+  if(url==='/__lattice/settings/index-status')return {ok:true,json:async()=>structuredClone(state.index_status)};
+  assert.equal(url,'/__lattice/settings');
   if(options.method==='PATCH'){
     const body=JSON.parse(options.body);saves.push(body);
     for(const key of ['recall','upstream','pipeline'])Object.assign(state[key],body[key]);
@@ -27,7 +27,7 @@ globalThis.fetch=async(url,options={})=>{
   }
   return {ok:true,json:async()=>structuredClone(state)};
 };
-const directory=await mkdtemp(join(tmpdir(),'serein-index-settings-dom-'));let root;
+const directory=await mkdtemp(join(tmpdir(),'lattice-index-settings-dom-'));let root;
 try{
   const output=await build({stdin:{contents:`import React,{act,useState} from 'react';import {createRoot} from 'react-dom/client';import {ModelSettings} from './src/components/ModelSettings.jsx';export {act};function Harness(){const [threshold,setThreshold]=useState(null),[candidates,setCandidates]=useState({}),[passages,setPassages]=useState({});return <ModelSettings page="configuration" recallThreshold={threshold} setRecallThreshold={setThreshold} candidateThresholdDraft={candidates} setCandidateThresholdDraft={setCandidates} passageDraft={passages} setPassageDraft={setPassages}/>;}export function mount(){const root=createRoot(document.getElementById('root'));root.render(<Harness/>);return root;}`,resolveDir:process.cwd(),loader:'jsx'},jsx:'automatic',bundle:true,platform:'node',format:'esm',write:false,define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"'}});
   const path=join(directory,'bundle.mjs');await writeFile(path,output.outputFiles[0].text);

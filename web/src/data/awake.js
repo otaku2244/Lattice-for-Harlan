@@ -5,10 +5,10 @@ export const people = [
 ];
 export const defaultCoverSettings = {tagline:"让记忆有出处，让故事慢慢形成。",fadeStart:62,portraitHazeEnabled:true,compositionEnabled:false};
 export const coverSettingStorageKeys = {
-  tagline: "serein.awake.tagline",
-  fadeStart: "serein.awake.fadeStart",
-  portraitHazeEnabled: "serein.awake.portraitHaze",
-  compositionEnabled: "serein.awake.composition",
+  tagline: "lattice.awake.tagline",
+  fadeStart: "lattice.awake.fadeStart",
+  portraitHazeEnabled: "lattice.awake.portraitHaze",
+  compositionEnabled: "lattice.awake.composition",
 };
 
 export const defaultCompositionItems = [

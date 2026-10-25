@@ -4,9 +4,9 @@ import pytest
 
 httpx = pytest.importorskip("httpx")
 
-from serein.adapters.reranker import RerankerClient, RerankerProviderError
-from serein.config import load_settings
-from serein.recall.service import Recall
+from lattice.adapters.reranker import RerankerClient, RerankerProviderError
+from lattice.config import load_settings
+from lattice.recall.service import Recall
 
 
 def test_configured_reranker_preserves_question_and_maps_provider_positions(tmp_path, monkeypatch):
@@ -16,13 +16,13 @@ database = "runtime.db"
 [reranker]
 endpoint = "https://rerank.example/v1/rerank"
 model = "configured-model"
-api_key_env = "SEREIN_TEST_RERANKER_KEY"
+api_key_env = "LATTICE_TEST_RERANKER_KEY"
 ''', encoding="utf-8")
-    from serein.core.store import Store
+    from lattice.core.store import Store
     settings = load_settings(profile)
     with Store(settings.database):pass
     engine = Recall(settings)
-    monkeypatch.setenv("SEREIN_TEST_RERANKER_KEY", "test-secret")
+    monkeypatch.setenv("LATTICE_TEST_RERANKER_KEY", "test-secret")
     question = "世界之窗那天发生了什么？"
     documents = [{"ref": "event:first", "title": "归航", "body": "原始经历"},
                  {"ref": "scene:second", "title": "窗前", "body": "场景正文"}]
@@ -49,7 +49,7 @@ api_key_env = "SEREIN_TEST_RERANKER_KEY"
     ('https://api.siliconflow.cn.example/v1/rerank', 'Qwen/Qwen3-Reranker-4B', False),
 ])
 def test_memory_instruction_uses_supported_provider_field_without_rewriting_inputs(endpoint, model, supported):
-    from serein.adapters.reranker import MEMORY_RELEVANCE_INSTRUCTION
+    from lattice.adapters.reranker import MEMORY_RELEVANCE_INSTRUCTION
 
     question = '喜欢你做的星星，我们之前聊过的星云叫什么？'
     evidence = 'title: 星云\nbody: 那晚聊的是猎户座大星云。'
@@ -93,8 +93,8 @@ def test_instruction_provider_failure_does_not_retry_without_the_instruction():
 
 
 def test_reranker_failures_cannot_turn_into_admission(monkeypatch):
-    monkeypatch.setenv("SEREIN_TEST_RERANKER_KEY", "test-secret")
-    scorer = RerankerClient("https://rerank.example/v1/rerank", "configured-model", "SEREIN_TEST_RERANKER_KEY")
+    monkeypatch.setenv("LATTICE_TEST_RERANKER_KEY", "test-secret")
+    scorer = RerankerClient("https://rerank.example/v1/rerank", "configured-model", "LATTICE_TEST_RERANKER_KEY")
     docs = [{"ref": "event:first", "title": "标题", "body": "正文"}]
     failures = [httpx.Response(401, text="private test-secret"),
                 httpx.Response(200, json={"results": [{"index": 7, "relevance_score": .9}]}),

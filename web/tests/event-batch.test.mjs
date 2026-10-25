@@ -10,7 +10,7 @@ test("mixed results preserve failures and only acknowledge persisted archive rec
   const result = await runEventBatch(["a", "b", "c"], "archive", {
     request: async (url, options) => {
       const body = JSON.parse(options.body);
-      assert.equal(url, "/__serein/memory/set-fact-event-status");
+      assert.equal(url, "/__lattice/memory/set-fact-event-status");
       assert.equal(body.status, "archived");
       return body.itemId === "b" ? response({ error: "conflict" }, 409)
         : response({ item: event(body.itemId, { status: "archived" }) });
@@ -38,7 +38,7 @@ test("HTTP 200 without the requested result does not clear selection", async () 
 test("mute sends no prose or lifecycle changes, restore does not re-enable recall", async () => {
   const muted = event("a", { status: "archived", recallable: false });
   const result = await runEventBatch(["a"], "mute", { request: async (url, options) => {
-    assert.equal(url, "/__serein/memory/revise-fact-event");
+    assert.equal(url, "/__lattice/memory/revise-fact-event");
     assert.deepEqual(JSON.parse(options.body), { itemId: "a", recallable: false });
     return response({ item: muted });
   } });

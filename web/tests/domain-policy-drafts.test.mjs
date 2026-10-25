@@ -26,7 +26,7 @@ test('a legacy shared draft migrates to both once and cannot resurrect after sav
   clearDomainPolicyDraft(baseline, 'event');
   assert.equal(readDomainPolicyDraft(baseline, 'scene')[0].policy, 'excluded');
   assert.equal(hasDomainPolicyDraft('event'), false);
-  assert.equal(data.has('serein.basement.domain-policy-draft.v1'), false);
+  assert.equal(data.has('lattice.basement.domain-policy-draft.v1'), false);
 });
 
 test('stale versions survive refresh; removed keys and invalid policies do not override the catalog', () => {

@@ -2,8 +2,8 @@ import asyncio
 import httpx
 import pytest
 from test_public_settings import deployment
-from serein.deployment import read_settings, save_settings
-from serein.model_discovery import discover
+from lattice.deployment import read_settings, save_settings
+from lattice.model_discovery import discover
 
 
 def prepare(deployment):
@@ -75,7 +75,7 @@ def test_endpoint_auth_validation_and_dispatch(deployment,monkeypatch):
     async def fake(s,body):
         assert s==settings and body==p
         return {'models':['available'],'truncated':False}
-    monkeypatch.setattr('serein.model_discovery.discover',fake)
+    monkeypatch.setattr('lattice.model_discovery.discover',fake)
     assert api.post('/v1/settings/models/discover',json=p).json()['models']==['available']
     assert api.post('/v1/settings/models/discover',json=p,headers={'Authorization':'Bearer wrong'}).status_code==401
     p['api_key']='private-string'*400

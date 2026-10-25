@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from serein.ingest.scene_snapshot import export_snapshot, write_snapshot
+from lattice.ingest.scene_snapshot import export_snapshot, write_snapshot
 
 
 def test_export_is_read_only_and_excludes_unidentified_buckets(tmp_path):

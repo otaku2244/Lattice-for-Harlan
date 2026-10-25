@@ -19,7 +19,7 @@ const proposalKindLabels = {
 };
 
 async function requestRevisionInbox(status) {
-  const response = await fetch("/__serein/memory/narrative-revisions", {
+  const response = await fetch("/__lattice/memory/narrative-revisions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status, limit: 100 }),
@@ -69,7 +69,7 @@ export function BasementRevisionInbox() {
 
   const openNarrativeRewrite = (item) => {
     if (!String(item.narrative_id || "").startsWith("narrative_")) return;
-    window.sessionStorage.setItem("serein:narrative-rewrite-intent", item.narrative_id);
+    window.sessionStorage.setItem("lattice:narrative-rewrite-intent", item.narrative_id);
     window.location.hash = "#narrative";
   };
 
@@ -81,7 +81,7 @@ export function BasementRevisionInbox() {
     if (prompts[action] && !window.confirm(prompts[action])) return;
     setSavingId(item.proposal_id);
     try {
-      const response = await fetch("/__serein/memory/review-narrative-revision", {
+      const response = await fetch("/__lattice/memory/review-narrative-revision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

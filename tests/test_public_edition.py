@@ -5,21 +5,21 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from serein.application import Application
-from serein.deployment import save_settings
-from serein.api.http import create_app
-from serein.api.mcp import create_server
-from serein.bootstrap import initialize
-from serein.config import Settings, load_settings
-from serein.core.store import Store, Conflict
-from serein.core.personal import Personal
-from serein.extensions.event_pipeline import process_pending
-from serein.compat.raw_archive import raw_archive
+from lattice.application import Application
+from lattice.deployment import save_settings
+from lattice.api.http import create_app
+from lattice.api.mcp import create_server
+from lattice.bootstrap import initialize
+from lattice.config import Settings, load_settings
+from lattice.core.store import Store, Conflict
+from lattice.core.personal import Personal
+from lattice.extensions.event_pipeline import process_pending
+from lattice.compat.raw_archive import raw_archive
 
 
 @pytest.fixture
 def settings(tmp_path):
-    value=Settings(tmp_path/'serein.db',tmp_path/'index.sqlite',writable=True,
+    value=Settings(tmp_path/'lattice.db',tmp_path/'index.sqlite',writable=True,
                    extensions={'handoff':{'enabled':True,'page_chars':1000}})
     initialize(value)
     save_settings(value.database,{'features':{'resume':True}})
@@ -154,8 +154,8 @@ def test_semantic_configuration_cannot_silently_change_strategy(tmp_path):
 
 
 def test_disabled_background_features_do_not_create_clients(settings,monkeypatch):
-    import serein.compat.jobs
-    monkeypatch.setattr(serein.compat.jobs,'BackgroundJobs',lambda *_args,**_kwargs:pytest.fail('Background client instantiated'))
+    import lattice.compat.jobs
+    monkeypatch.setattr(lattice.compat.jobs,'BackgroundJobs',lambda *_args,**_kwargs:pytest.fail('Background client instantiated'))
     app=Application(replace(settings,extensions={'dreams':{'enabled':False},'narrative_scout':{'enabled':False},'relations':{'enabled':False}}))
     assert app.capabilities()['jobs']==['index']
 
@@ -177,8 +177,8 @@ def test_source_paging_context_and_host_delivery_projection(settings):
 
 
 def test_shared_lifecycle_starts_and_cancels_enabled_job(settings):
-    from serein.lifecycle import lifespan
-    from serein.extensions import Contributions
+    from lattice.lifecycle import lifespan
+    from lattice.extensions import Contributions
     observed=[]
     async def job():
         observed.append('started')

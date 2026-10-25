@@ -10,15 +10,15 @@ import sys
 import tempfile
 import threading
 
-from serein.bootstrap import initialize
-from serein.config import Settings
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.configured_models import effective_settings, prepare_selected
-from serein.legacy_migration.scan import scan
-from serein.legacy_migration.workflow import Migration
-from serein.legacy_migration.vectors import maintain
-from serein.recall.legacy_indexes import refresh
+from lattice.bootstrap import initialize
+from lattice.config import Settings
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.configured_models import effective_settings, prepare_selected
+from lattice.legacy_migration.scan import scan
+from lattice.legacy_migration.workflow import Migration
+from lattice.legacy_migration.vectors import maintain
+from lattice.recall.legacy_indexes import refresh
 
 
 def test_full_synthetic_conversion(tmp_path):
@@ -61,7 +61,7 @@ def test_full_synthetic_conversion(tmp_path):
         if sys.platform=='linux':
             config=tmp_path/'config.toml';config.write_text(f'[storage]\ndatabase="{settings.database}"\nindex="{settings.index}"\n[runtime]\nwritable=true\n','utf-8')
             options_file=tmp_path/'options.json';options_file.write_text(json.dumps(options),'utf-8')
-            args=[sys.executable,'-m','serein.legacy_migration','--config',str(config),'wizard',str(old),'--options',str(options_file)]
+            args=[sys.executable,'-m','lattice.legacy_migration','--config',str(config),'wizard',str(old),'--options',str(options_file)]
             for _ in range(2):
                 result=subprocess.run(args,input='yes\nyes\nyes\nyes\nyes\n',text=True,capture_output=True,timeout=180)
                 assert result.returncode==0,result.stdout+'\n'+result.stderr
@@ -93,4 +93,4 @@ def test_full_synthetic_conversion(tmp_path):
 
 
 if __name__=='__main__':
-    with tempfile.TemporaryDirectory(prefix='serein-migration-smoke-') as folder:test_full_synthetic_conversion(Path(folder))
+    with tempfile.TemporaryDirectory(prefix='lattice-migration-smoke-') as folder:test_full_synthetic_conversion(Path(folder))

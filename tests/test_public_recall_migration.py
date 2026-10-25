@@ -10,15 +10,15 @@ from test_public_settings import deployment, configure
 from test_surface_selection import legacy
 from test_recall_policy import setup
 from test_live_events import item
-from serein.configured_models import effective_settings, memory_ready
-from serein.core import Store
-from serein.core.reader import Reader
-from serein.compat.narratives import narrative_transaction
-from serein.recall.service import Recall
-from serein.recall.scene import related_candidates
-from serein.recall.query import Query
-from serein.recall.surface_gate import load_gate
-from serein.recall.worker import update_pending
+from lattice.configured_models import effective_settings, memory_ready
+from lattice.core import Store
+from lattice.core.reader import Reader
+from lattice.compat.narratives import narrative_transaction
+from lattice.recall.service import Recall
+from lattice.recall.scene import related_candidates
+from lattice.recall.query import Query
+from lattice.recall.surface_gate import load_gate
+from lattice.recall.worker import update_pending
 
 
 @pytest.mark.parametrize('metadata,excluded', [
@@ -29,20 +29,24 @@ from serein.recall.worker import update_pending
     ({'domain':['life','tech']},False),
 ])
 def test_legacy_domain_exclusions_apply_to_lookup_and_both_edge_ends(setup,metadata,excluded):
-    from serein.deployment import save_settings,DEFAULT_DOMAINS
+    from lattice.deployment import save_settings,DEFAULT_DOMAINS
     save_settings(setup.database,{'features':{'association':True},'tagging':{'domains':[
         {**row,'policy':setup.recall['domains'].get(row['key'],row['policy'])} for row in DEFAULT_DOMAINS]}})
     with Store(setup.database) as store:
         old=store.read('scene_tech')
         store.revise('scene_tech',expected_revision=old['revision'],title=old['title'],body_md=old['body_md'],metadata=metadata)
+        # The shared fixture's earlier edge otherwise consumes the single
+        # neighbor slot before this test can exercise the target domain.
+        store.conn.execute("DELETE FROM scene_relations WHERE id='edge'")
         store.conn.execute("INSERT INTO scene_relations VALUES ('tech-edge','test','scene_tech','scene_a','active',1,'{}')")
-    from serein.recall.index import refresh_index
+    from lattice.recall.index import refresh_index
     refresh_index(setup.database,setup.index,{'scene_tech'})
     engine=Recall(setup)
     assert bool(engine.run('技术说明',mode='lookup')['selected_refs']) is not excluded
     with Reader(setup.database) as reader:
         assert bool(related_candidates(reader,['scene_tech'],Query('技术说明'),engine.policy)) is not excluded
         targets=related_candidates(reader,['scene_a'],Query('世界之窗'),engine.policy)
+        assert len(targets)<=1
         assert any(row['id']=='scene_tech' for row in targets) is not excluded
 
 
@@ -52,7 +56,7 @@ def test_excluded_legacy_domain_never_reaches_mixed_reranker(legacy):
     with Store(settings.database) as store:
         old=store.read('tech')
         store.revise('tech',expected_revision=1,title=old['title'],body_md=old['body_md'],metadata={'domain':['tech'],'date':'2026-09-01'})
-    from serein.recall.index import refresh_index
+    from lattice.recall.index import refresh_index
     refresh_index(settings.database,settings.index,{'tech'})
     with sqlite3.connect(settings.index) as conn:
         conn.execute("INSERT OR REPLACE INTO vectors VALUES ('tech','[1,0]',2)")
@@ -69,7 +73,7 @@ def test_domain_projection_and_settings_policy_agree_without_rewriting(deploymen
     with Store(settings.database) as store:
         store.create('old','scene','旧格式场景','合成测试正文',metadata={'domain':['tech']})
         store.create('new','scene','新格式场景','合成测试正文',metadata={'domain':['tech'],'canonical_domain':'life'})
-    result=client.post('/api/serein/memory-projection',json={}).json()['scenes']
+    result=client.post('/api/lattice/memory-projection',json={}).json()['scenes']
     assert {row['source_id']:row['bucket_domain'] for row in result}=={'old':'tech','new':'life'}
     light=client.get('/api/buckets/light').json()['buckets']
     assert {row['id']:row['canonical_domain'] for row in light}=={'old':'tech','new':'life'}
@@ -121,7 +125,7 @@ def test_settings_prepare_wires_full_routes_entities_and_arc_then_refreshes_evid
     assert index.resolve_query('星港最近的进展是什么')['scope_anchor']['arc_key']=='arc:star'
     assert any(row['owner_id']==scene for row in index.owner_query_matches('星港',owner_keys=[('scene',scene)]))
     # The scope is a candidate boundary; an Arc's authored body is never injected here.
-    from serein.recall.typed_surface import scope_members
+    from lattice.recall.typed_surface import scope_members
     with Reader(settings.database) as reader:
         assert scope_members(reader)['arc:star']=={('scene',scene),('scene','second')}
     evidence=client.post('/v1/tools/call',json={'name':'read_scene_evidence','arguments':{'scene_id':scene}}).json()['result']

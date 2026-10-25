@@ -43,7 +43,7 @@ export function RecallThresholdSettings({config,draft,setDraft,candidateDraft,se
         Number(poolValue)===(config.recall?.direct_pool_limit??20)&&
         Number(cueValue)===(config.recall?.cue_candidate_threshold??0.55))} onClick={save}>{busy?'保存中…':'保存召回门槛'}</button>
       <button type="button" disabled={disabled||busy||!valid} onClick={()=>{
-        window.dispatchEvent(new CustomEvent('serein:open-recall-simulation',{detail:{threshold:Number(value)}}));
+        window.dispatchEvent(new CustomEvent('lattice:open-recall-simulation',{detail:{threshold:Number(value)}}));
         window.location.hash='#basement';
       }}>去召回模拟试调</button>
     </div>

@@ -11,7 +11,7 @@ import types
 from uuid import uuid4
 import zipfile
 
-REPOSITORY = 'otaku2244/Serein-for-Harlan'
+REPOSITORY = 'otaku2244/Lattice-for-Harlan'
 REMOTE = f'https://github.com/{REPOSITORY}.git'
 BRANCH = 'main'
 MAX_SOURCE_BYTES = 300 * 1024 * 1024
@@ -209,7 +209,7 @@ def apply_files(root, staged, names, obsolete, backup):
 
 def load_source(path):
     path = Path(path)
-    module = types.ModuleType('updated_serein_' + path.stem)
+    module = types.ModuleType('updated_lattice_' + path.stem)
     module.__file__ = str(path)
     # Read the new source, not a potentially cached pre-update .pyc file.
     exec(compile(path.read_bytes(), str(path), 'exec'), module.__dict__)
@@ -249,7 +249,7 @@ def run_update(manager):
         return False
     manager.ensure_tools()
     print('用 Git 拉取 main 代码；这一阶段保持当前服务运行。', flush=True)
-    with tempfile.TemporaryDirectory(prefix='serein-update-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='lattice-update-') as temporary:
         staged, names = prepare(commit, temporary)
         all_names, obsolete = plan_files(root, names, staged)
         backup = backup_sources(root, all_names)
@@ -289,13 +289,13 @@ def run_update(manager):
 
 def main(argv=None):
     import argparse
-    parser = argparse.ArgumentParser(description='在原安装目录内接入或运行 Serein 上游更新')
+    parser = argparse.ArgumentParser(description='在原安装目录内接入或运行 Lattice 上游更新')
     parser.add_argument('--root', type=Path, required=True, help='已有实例的安装目录（包含 deploy 和 scripts）')
     args = parser.parse_args(argv)
     root = args.root.expanduser().resolve()
     try:
         manager = load_manager(root)
-        locks = load_source(root / 'src' / 'serein' / 'file_lock.py')
+        locks = load_source(root / 'src' / 'lattice' / 'file_lock.py')
         with locks.exclusive_lock(root / 'deploy' / 'runtime' / 'installer.lock'):
             run_update(manager)
         return 0

@@ -9,16 +9,16 @@ pytest.importorskip("mcp")
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from serein.application import Application
-from serein.config import Settings
-from serein.core import Store
-from serein.core.search import build_index
-from serein.api.mcp import create_server
+from lattice.application import Application
+from lattice.config import Settings
+from lattice.core import Store
+from lattice.core.search import build_index
+from lattice.api.mcp import create_server
 
 
 @pytest.mark.parametrize('restricted', [False, True])
 def test_legacy_authoring_tools_stay_unavailable_with_old_config(tmp_path, restricted):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
 
     database = tmp_path / 'memory.db'
     with Store(database):
@@ -52,7 +52,7 @@ def test_stdio_mcp_write_read_recall_and_retry(tmp_path):
     config.write_text('[storage]\ndatabase="runtime.db"\nindex="index.db"\n[runtime]\nwritable=true\n', encoding="utf-8")
 
     async def exercise():
-        parameters = StdioServerParameters(command=sys.executable, args=["-m", "serein", "--config", str(config), "mcp"],
+        parameters = StdioServerParameters(command=sys.executable, args=["-m", "lattice", "--config", str(config), "mcp"],
                                           env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")})
         async with stdio_client(parameters) as (read, write):
             async with ClientSession(read, write) as session:
@@ -64,7 +64,7 @@ def test_stdio_mcp_write_read_recall_and_retry(tmp_path):
                     assert next(tool for tool in listing.tools if tool.name == name).outputSchema is None
                 assert 'update_evidence' not in names
                 assert not {"handoff", "breath", "resume_context"} & names
-                from serein.deployment import save_settings
+                from lattice.deployment import save_settings
                 save_settings(database,{'features':{'memos':True}})
                 assert 'memo_list' in {tool.name for tool in (await session.list_tools()).tools}
                 memo=await session.call_tool('memo_create',{'title':'Book','content':'Bring it','memo_id':'stdio-memo'})
@@ -257,7 +257,7 @@ def test_scene_only_schema_edit_preservation_and_proposal_boundary(tmp_path):
 
 @pytest.mark.parametrize('selected', [False, True])
 def test_promotion_optional_allowlist_can_start_disabled(tmp_path, selected):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     database = tmp_path/'allowlist.db'
     with Store(database):
         pass
@@ -284,7 +284,7 @@ def test_retired_index_sync_is_rejected_from_allowlist(tmp_path):
 def test_mcp_omitted_recall_arguments_follow_provider_configuration(tmp_path, configured, method, monkeypatch):
     from types import SimpleNamespace
 
-    monkeypatch.setenv('SEREIN_SNAPSHOT_ID', 'test-snapshot')
+    monkeypatch.setenv('LATTICE_SNAPSHOT_ID', 'test-snapshot')
     database = tmp_path / 'memory.db'
     with Store(database):
         pass
@@ -301,7 +301,7 @@ def test_mcp_omitted_recall_arguments_follow_provider_configuration(tmp_path, co
             calls.append((self.settings, query, options))
             return {'status':'matched', 'selected_refs':['scene:synthetic']}
 
-    monkeypatch.setattr('serein.application.Recall', FakeRecall)
+    monkeypatch.setattr('lattice.application.Recall', FakeRecall)
     server = create_server(app)
 
     async def exercise():
@@ -325,8 +325,8 @@ def test_mcp_omitted_recall_arguments_follow_provider_configuration(tmp_path, co
 def test_mcp_automatic_method_tracks_saved_ui_embedding_without_restart(tmp_path, monkeypatch):
     import json
     from types import SimpleNamespace
-    from serein.configured_models import model_index, recall_resource_version
-    from serein.deployment import save_settings, task_model
+    from lattice.configured_models import model_index, recall_resource_version
+    from lattice.deployment import save_settings, task_model
 
     database = tmp_path / 'memory.db'
     with Store(database):
@@ -345,7 +345,7 @@ def test_mcp_automatic_method_tracks_saved_ui_embedding_without_restart(tmp_path
             return {'status':'matched', 'selected_refs':['scene:synthetic']}
 
     # Keep the real Services.recall/effective_settings path; never call a provider.
-    monkeypatch.setattr('serein.application.Recall', FakeRecall)
+    monkeypatch.setattr('lattice.application.Recall', FakeRecall)
     server = create_server(app)
     save_settings(database, {'models':[
         {'id':name, 'label':name, 'model':name, 'protocol':'openai',

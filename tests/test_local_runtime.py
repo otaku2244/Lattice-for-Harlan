@@ -19,9 +19,9 @@ ROOT=Path(__file__).parents[1]
 
 def link_directory(target,link):
     if os.name=='nt':
-        env=dict(os.environ,SEREIN_TEST_TARGET=str(target),SEREIN_TEST_LINK=str(link))
+        env=dict(os.environ,LATTICE_TEST_TARGET=str(target),LATTICE_TEST_LINK=str(link))
         subprocess.run(['powershell','-NoProfile','-Command',
-            'New-Item -ItemType Junction -Path $env:SEREIN_TEST_LINK -Target $env:SEREIN_TEST_TARGET | Out-Null'],
+            'New-Item -ItemType Junction -Path $env:LATTICE_TEST_LINK -Target $env:LATTICE_TEST_TARGET | Out-Null'],
             env=env,check=True,capture_output=True)
     else:link.symlink_to(target,target_is_directory=True)
 
@@ -44,7 +44,7 @@ def test_native_services_auth_persistence_restart_and_port_conflict(tmp_path):
     gateway,memory,preview=[item.getsockname()[1] for item in sockets]
     for item in sockets:item.close()
     (deploy/'installation.json').write_text(json.dumps({'backend':'local','memory_port':memory,'preview_port':preview}))
-    (deploy/'.env').write_text(f'SEREIN_BIND=127.0.0.1\nSEREIN_PORT={gateway}\n')
+    (deploy/'.env').write_text(f'LATTICE_BIND=127.0.0.1\nLATTICE_PORT={gateway}\n')
     text=(ROOT/'config.example.toml').read_text('utf-8').replace('./.runtime/','./runtime/')
     (deploy/'config.toml').write_text(text,'utf-8')
     (secrets/'api-token').write_text('synthetic-native-token')
@@ -77,11 +77,11 @@ def test_native_services_auth_persistence_restart_and_port_conflict(tmp_path):
         status,page=request();assert status==200 and b'synthetic-native-token' not in page
         assert request('/v1/models')[0]==401
         assert request('/v1/models',auth='Bearer synthetic-native-token')[0]==200
-        assert request('/__serein/settings',data={'identity':{'user_name':'Native Fixture'}})[0]==200
+        assert request('/__lattice/settings',data={'identity':{'user_name':'Native Fixture'}})[0]==200
         run('restart','memory')
-        assert json.loads(request('/__serein/settings')[1])['identity']['user_name']=='Native Fixture'
+        assert json.loads(request('/__lattice/settings')[1])['identity']['user_name']=='Native Fixture'
         run('restart','gateway')
-        assert json.loads(request('/__serein/settings')[1])['identity']['user_name']=='Native Fixture'
+        assert json.loads(request('/__lattice/settings')[1])['identity']['user_name']=='Native Fixture'
         run('stop')
         assert not (runtime/'memory.control.json').exists()
         assert not (runtime/'gateway.control.json').exists()
@@ -92,6 +92,6 @@ def test_native_services_auth_persistence_restart_and_port_conflict(tmp_path):
             # Failure must not terminate the unrelated listener or claim success.
             with socket.create_connection(('127.0.0.1',memory),timeout=2):pass
         run('start')
-        assert json.loads(request('/__serein/settings')[1])['identity']['user_name']=='Native Fixture'
+        assert json.loads(request('/__lattice/settings')[1])['identity']['user_name']=='Native Fixture'
     finally:
         run('stop',check=False)

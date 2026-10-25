@@ -12,17 +12,17 @@
 
 HTTP `POST /v1/extensions/pipeline_next` 接受 `{"include_recent":true}`，返回下一份任务或本批结果。任务含 `job_id`、`role` 和冻结 `request`，其中 `prompt` 为最新完整提示、`rules` 为对应 AGENTS.md。提交到 `POST /v1/extensions/pipeline_submit`，body 为 `{"job_id":"...","output":{...}}`，之后再调用 next。MCP 同名工具使用同样参数。重试相同结果幂等；不同结果不能覆盖已接收阶段。
 
-设置页的“配置 Agent 整理 Event”弹窗提供 MCP 配置示例。使用发行包内 `scripts/event_agent_mcp.py` 连接已运行的 HTTP 后端；它只暴露领取、提交两个工具，不启动另一份后台任务。配置 `SEREIN_AGENT_URL` 与 `SEREIN_AGENT_TOKEN`，并把 Python 和脚本路径替换成实际安装位置。Agent 完整读取 prompt，完成对应角色，提交 JSON，再领下一阶段；不是打开弹窗就自动运行 Agent。
+设置页的“配置 Agent 整理 Event”弹窗提供 MCP 配置示例。使用发行包内 `scripts/event_agent_mcp.py` 连接已运行的 HTTP 后端；它只暴露领取、提交两个工具，不启动另一份后台任务。配置 `LATTICE_AGENT_URL` 与 `LATTICE_AGENT_TOKEN`，并把 Python 和脚本路径替换成实际安装位置。Agent 完整读取 prompt，完成对应角色，提交 JSON，再领下一阶段；不是打开弹窗就自动运行 Agent。
 
-三份角色文件在 `src/serein/resources/agents/`，随 wheel 打包。旧的 `segment_events` 单阶段协议已经退役，不再接受 `extensions.event_pipeline.command` 启动另一套切分器。显式启用该扩展与设置页模型选择都运行同一份最新流水线。已有旧配置请删除 command，使用上述 API/MCP 接入。
+三份角色文件在 `src/lattice/resources/agents/`，随 wheel 打包。旧的 `segment_events` 单阶段协议已经退役，不再接受 `extensions.event_pipeline.command` 启动另一套切分器。显式启用该扩展与设置页模型选择都运行同一份最新流水线。已有旧配置请删除 command，使用上述 API/MCP 接入。
 
 ## Narrative runner
 
 设置页可以直接为 Writer 选择已配置的模型，省去外部 runner。两种入口均在运行前读取服务端身份配置，并由宿主复查输出 schema 与保存 fingerprint。
 
-设置页“配置 Agent 撰写叙事卷”弹窗提供配置步骤。使用外部 runner 时，关闭“启用 API Writer”，在前端 Node 服务环境设置 `SEREIN_WRITER_ENABLED=1`、`SEREIN_WRITER_MODEL`，并在修改这些进程环境后重启该 Node 服务。
+设置页“配置 Agent 撰写叙事卷”弹窗提供配置步骤。使用外部 runner 时，关闭“启用 API Writer”，在前端 Node 服务环境设置 `LATTICE_WRITER_ENABLED=1`、`LATTICE_WRITER_MODEL`，并在修改这些进程环境后重启该 Node 服务。
 
-`SEREIN_WRITER_COMMAND` 为 JSON 字符串数组，例如 `["python","/absolute/path/writer.py"]`。runner 接收 `task=narrative_preview`、显式 `model`、`prompt`、冻结 `materials` 与 `output_schema`，返回严格符合 schema 的 JSON。证据不足必须返回 `evidence_sufficient=false`、空 body 和问题列表。Writer 只读取本次绑定的文字材料，不加载原消息图片；文字不足时不能猜测图片内容。
+`LATTICE_WRITER_COMMAND` 为 JSON 字符串数组，例如 `["python","/absolute/path/writer.py"]`。runner 接收 `task=narrative_preview`、显式 `model`、`prompt`、冻结 `materials` 与 `output_schema`，返回严格符合 schema 的 JSON。证据不足必须返回 `evidence_sufficient=false`、空 body 和问题列表。Writer 只读取本次绑定的文字材料，不加载原消息图片；文字不足时不能猜测图片内容。
 
 角色文件在 `web/codex_agents/`；目录名保留导入接口，runner 不依赖 Codex。`update` 使用原正文和新增材料，`rewrite` 使用全部绑定材料；移除材料要求 rewrite。服务端保存仍复查材料 fingerprint 和版本，预览不发布。
 

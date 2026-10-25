@@ -4,22 +4,22 @@ from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
 
-from serein.api.http import create_app
-from serein.config import Settings
-from serein.core import Store
+from lattice.api.http import create_app
+from lattice.config import Settings
+from lattice.core import Store
 
 
 def _challenge(verifier):
     return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
 
 
-def _authorize(client, registration, *, state='exact-state', resource='https://memory.example/serein/mcp'):
+def _authorize(client, registration, *, state='exact-state', resource='https://memory.example/lattice/mcp'):
     verifier = 'synthetic-verifier-' + 'x' * 43
     params = {
         'response_type':'code', 'client_id':registration['client_id'],
         'redirect_uri':registration['redirect_uris'][0], 'state':state,
         'code_challenge':_challenge(verifier), 'code_challenge_method':'S256',
-        'resource':resource, 'scope':'serein:mcp',
+        'resource':resource, 'scope':'lattice:mcp',
     }
     page = client.get('/authorize', params=params)
     assert page.status_code == 200
@@ -41,9 +41,9 @@ def test_oauth_discovery_pkce_refresh_rotation_and_static_bearer(tmp_path):
     with TestClient(app, base_url='https://memory.example') as client:
         protected = client.get('/.well-known/oauth-protected-resource').json()
         assert protected == {
-            'resource':'https://memory.example/serein/mcp',
+            'resource':'https://memory.example/lattice/mcp',
             'authorization_servers':['https://memory.example'],
-            'scopes_supported':['serein:mcp'], 'bearer_methods_supported':['header'],
+            'scopes_supported':['lattice:mcp'], 'bearer_methods_supported':['header'],
         }
         metadata = client.get('/.well-known/oauth-authorization-server').json()
         assert metadata['authorization_endpoint'] == 'https://memory.example/authorize'
@@ -78,7 +78,7 @@ def test_oauth_discovery_pkce_refresh_rotation_and_static_bearer(tmp_path):
         }}
         oauth_headers = {'Authorization':'Bearer '+grant['access_token'],
                          'Accept':'application/json, text/event-stream'}
-        assert client.post('/serein/mcp', headers=oauth_headers, json=initialize).status_code == 200
+        assert client.post('/lattice/mcp', headers=oauth_headers, json=initialize).status_code == 200
         # Access tokens are audience-bound to the exact MCP resource.
         denied_alias = client.post('/mcp', headers=oauth_headers, json=initialize)
         assert denied_alias.status_code == 401
@@ -95,17 +95,17 @@ def test_oauth_discovery_pkce_refresh_rotation_and_static_bearer(tmp_path):
         assert refreshed.status_code == 200
         rotated = refreshed.json()
         assert rotated['refresh_token'] != grant['refresh_token']
-        assert client.post('/serein/mcp', headers=oauth_headers, json=initialize).status_code == 401
+        assert client.post('/lattice/mcp', headers=oauth_headers, json=initialize).status_code == 401
         rotated_headers = {'Authorization':'Bearer '+rotated['access_token'],
                            'Accept':'application/json, text/event-stream'}
-        assert client.post('/serein/mcp', headers=rotated_headers, json=initialize).status_code == 200
+        assert client.post('/lattice/mcp', headers=rotated_headers, json=initialize).status_code == 200
         # Replaying a rotated refresh token revokes the entire token family.
         replay = client.post('/token', data={
             'grant_type':'refresh_token', 'client_id':registration['client_id'],
             'refresh_token':grant['refresh_token'], 'resource':params['resource'],
         })
         assert replay.status_code == 400 and replay.json()['error'] == 'invalid_grant'
-        assert client.post('/serein/mcp', headers=rotated_headers, json=initialize).status_code == 401
+        assert client.post('/lattice/mcp', headers=rotated_headers, json=initialize).status_code == 401
 
         code2, verifier2, params2 = _authorize(client, registration, state='key-rotation')
         surviving = client.post('/token', data={
@@ -117,9 +117,9 @@ def test_oauth_discovery_pkce_refresh_rotation_and_static_bearer(tmp_path):
     with TestClient(create_app(settings, token='replacement-gateway-key'),
                     base_url='https://memory.example') as client:
         headers = {'Authorization':'Bearer '+surviving, 'Accept':'application/json, text/event-stream'}
-        assert client.post('/serein/mcp', headers=headers, json=initialize).status_code == 401
+        assert client.post('/lattice/mcp', headers=headers, json=initialize).status_code == 401
         headers['Authorization'] = 'Bearer replacement-gateway-key'
-        assert client.post('/serein/mcp', headers=headers, json=initialize).status_code == 200
+        assert client.post('/lattice/mcp', headers=headers, json=initialize).status_code == 200
 
 
 def test_oauth_rejects_open_redirect_bad_key_and_replayed_code(tmp_path):
@@ -137,7 +137,7 @@ def test_oauth_rejects_open_redirect_bad_key_and_replayed_code(tmp_path):
         params = {'response_type':'code', 'client_id':registration['client_id'],
             'redirect_uri':'https://evil.example/callback', 'state':'state',
             'code_challenge':_challenge(verifier), 'code_challenge_method':'S256',
-            'resource':'https://memory.example/serein/mcp'}
+            'resource':'https://memory.example/lattice/mcp'}
         mismatch = client.get('/authorize', params=params)
         assert mismatch.status_code == 400 and 'redirect_uri' in mismatch.text
 
@@ -162,7 +162,7 @@ def test_oauth_rejects_open_redirect_bad_key_and_replayed_code(tmp_path):
 
 
 def test_oauth_registration_cap_evicts_unused_clients_and_public_http_is_refused(tmp_path, monkeypatch):
-    import serein.api.oauth as oauth
+    import lattice.api.oauth as oauth
     monkeypatch.setattr(oauth, 'CLIENT_LIMIT', 2)
     settings = Settings(tmp_path/'memory.db')
     with Store(settings.database):
@@ -178,7 +178,7 @@ def test_oauth_registration_cap_evicts_unused_clients_and_public_http_is_refused
         params = {'response_type':'code', 'client_id':first['client_id'],
             'redirect_uri':first['redirect_uris'][0], 'state':'state',
             'code_challenge':_challenge('v'*43), 'code_challenge_method':'S256',
-            'resource':'https://memory.example/serein/mcp'}
+            'resource':'https://memory.example/lattice/mcp'}
         assert client.get('/authorize', params=params).status_code == 400
     with TestClient(create_app(settings, token='synthetic-gateway-key'),
                     base_url='http://public.example') as client:

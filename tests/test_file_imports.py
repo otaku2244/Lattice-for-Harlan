@@ -2,14 +2,14 @@ import asyncio
 import json
 import pytest
 from fastapi.testclient import TestClient
-from serein.config import Settings
-from serein.bootstrap import initialize
-from serein.api.http import create_app
-from serein.imports import parse_file,stage,advance_import
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.extensions.pipeline import advance
-from serein.import_tagging import process
+from lattice.config import Settings
+from lattice.bootstrap import initialize
+from lattice.api.http import create_app
+from lattice.imports import parse_file,stage,advance_import
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.extensions.pipeline import advance
+from lattice.import_tagging import process
 
 NAMES={'user_name':'Nori','ai_name':'Atlas'}
 
@@ -107,7 +107,7 @@ def test_sillytavern_segment_overlap_append_conflict_and_session_boundaries(sett
 
 
 def test_sillytavern_preview_batch_resume_and_explicit_summary(settings):
-    from serein.imports import release_imported_originals
+    from lattice.imports import release_imported_originals
     header,rows=sillytavern(28)
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     response=client.post('/v1/imports/preview',json={'filename':'tavern.jsonl','content':jsonl(header,rows)})
@@ -167,7 +167,7 @@ def test_upload_preview_resume_and_no_processing_partial_file(settings):
     other=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     assert other.get('/v1/imports').json()['items'][0]['processed']==25
     assert other.post('/v1/imports/'+preview['id']+'/continue').json()['run_id']==queued['run_id']
-    from serein.work_tasks import execute, work
+    from lattice.work_tasks import execute, work
     result=asyncio.run(execute(settings.database,queued['id'],lambda:work(settings,queued['id'],{}),queued_id=queued['run_id']))
     assert result['inserted']==28 and result['status']=='completed'
     assert asyncio.run(advance(settings.database,include_recent=True))['status']=='current'
@@ -185,7 +185,7 @@ def operit(body='\nOriginal body.\n',uuid='stable-uuid'):
 
 def test_first_import_stores_passages_without_models_and_duplicate_reuses_them(settings,monkeypatch):
     import sqlite3
-    from serein.recall.passage_layouts import layout_path
+    from lattice.recall.passage_layouts import layout_path
     save_settings(settings.database,{'recall':{'passages_enabled':True}})
     data=operit('原文。'*200)
     preview=stage(settings.database,json.dumps(data),'long.json','operit',False)
@@ -193,7 +193,7 @@ def test_first_import_stores_passages_without_models_and_duplicate_reuses_them(s
     with sqlite3.connect(layout_path(settings.database)) as db:
         row=db.execute('SELECT * FROM layouts').fetchone()
         assert row[2]==500 and len(json.loads(row[3]))>1
-    monkeypatch.setattr('serein.recall.passages.slices',lambda *a,**kw:pytest.fail('Repeated import cut existing memory'))
+    monkeypatch.setattr('lattice.recall.passages.slices',lambda *a,**kw:pytest.fail('Repeated import cut existing memory'))
     data['exportDate']+=1
     again=stage(settings.database,json.dumps(data),'again.json','operit',False)
     assert advance_import(settings,again['id'])['duplicate']==1
@@ -232,7 +232,7 @@ def test_operit_tagging_waits_for_model_and_never_rewrites_body(settings,monkeyp
         assert 'Atlas' in request['forbidden_names']
         assert payload['thinking']=={'type':'disabled'}
         return {'choices':[{'message':{'content':json.dumps({'entities':[],'cues':['Original body'],'tags':['reading'],'domain':'life','body':'Invented text ignored'})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     asyncio.run(process(settings.database))
     with Store(settings.database) as store:
         key=store.conn.execute('SELECT document_id FROM import_tag_jobs').fetchone()[0]
@@ -241,14 +241,14 @@ def test_operit_tagging_waits_for_model_and_never_rewrites_body(settings,monkeyp
         assert doc['metadata']['canonical_domain']=='life'
         assert doc['metadata']['operit_original']['tagNames']==['original tag'] and doc['metadata']['scene_cues']==['Original body']
         assert doc['metadata']['operit_cues_generated'] is True
-        from serein.recall.scene import cue_matches
-        from serein.recall.query import Query
+        from lattice.recall.scene import cue_matches
+        from lattice.recall.query import Query
         assert cue_matches(doc,Query('Original body'))
 
 
 def test_custom_tagging_domains_persist_and_drive_boundaries(settings):
-    from serein.deployment import read_settings
-    from serein.recall.service import Recall
+    from lattice.deployment import read_settings
+    from lattice.recall.service import Recall
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     before=client.get('/v1/settings').json()
     assert len(before['tagging']['domains'])==7
@@ -267,8 +267,8 @@ def test_custom_tagging_domains_persist_and_drive_boundaries(settings):
 
 
 def test_domain_editor_updates_next_tagging_request_without_restart(settings, monkeypatch):
-    from serein.compat.scenes import Scenes
-    from serein.deployment import read_settings
+    from lattice.compat.scenes import Scenes
+    from lattice.deployment import read_settings
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     save_settings(settings.database,{'models':[{'id':'tagger','model':'synthetic','base_url':'http://127.0.0.1:9/v1'}],
         'assignments':{'operit_tagging':'tagger'}})
@@ -281,7 +281,7 @@ def test_domain_editor_updates_next_tagging_request_without_restart(settings, mo
     async def complete(model,payload):
         calls.append(json.loads(payload['messages'][1]['content']))
         return {'choices':[{'message':{'content':'{"domain":"reading","entities":[]}'}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
 
     def publish(domains,version):
         return client.post(endpoint+'/publish',json={'confirm':'PUBLISH_DOMAIN_RECALL_POLICIES',
@@ -312,7 +312,7 @@ def test_domain_editor_updates_next_tagging_request_without_restart(settings, mo
 
 
 def test_selected_tagging_binds_existing_cue_to_exact_passage(settings,monkeypatch):
-    from serein.recall.legacy_indexes import cue_index
+    from lattice.recall.legacy_indexes import cue_index
     save_settings(settings.database,{'models':[{'id':'tagger','model':'deepseek-flash','base_url':'https://api.deepseek.com/anthropic','protocol':'anthropic'}],
         'assignments':{'operit_tagging':'tagger'}})
     seen=[]
@@ -322,7 +322,7 @@ def test_selected_tagging_binds_existing_cue_to_exact_passage(settings,monkeypat
         return {'choices':[{'message':{'content':json.dumps({'bindings':[
             {'cue':'借书','passage_ordinal':0,'evidence':'借了一本书','confidence':.9},
             {'cue':'旅行','passage_ordinal':None,'evidence':'','confidence':0}]},ensure_ascii=False)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     index=cue_index(settings,profile={'model':'synthetic-embedding','document_instruction':''})
     passages=[{'ordinal':0,'start_offset':0,'end_offset':9,'text':'今天借了一本书。'}]
     output=asyncio.run(index.binder.bind(title='图书馆',cues=['借书','旅行'],passages=passages))
@@ -336,7 +336,7 @@ def test_selected_tagging_binds_existing_cue_to_exact_passage(settings,monkeypat
 
 
 def test_tagging_regular_scene_preserves_authored_cues_and_domain(settings,monkeypatch):
-    from serein.compat.scenes import Scenes
+    from lattice.compat.scenes import Scenes
     scenes=Scenes(settings.database)
     scenes.write('A book borrowed on Sunday.',['Sunday book'],title='New reading')
     scenes.write('A user classified memory.',['authored cue'],title='Already classified',domain='inner')
@@ -348,7 +348,7 @@ def test_tagging_regular_scene_preserves_authored_cues_and_domain(settings,monke
         request=json.loads(payload['messages'][1]['content']);calls.append(request)
         assert [item['key'] for item in request['domains']]==['reading']
         return {'choices':[{'message':{'content':'{"domain":"reading","entities":[],"tags":["invented small tag"]}'}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     asyncio.run(process(settings.database))
     asyncio.run(process(settings.database))
     assert len(calls)==2
@@ -371,7 +371,7 @@ def test_conflicting_chat_message_and_unknown_timestamps_are_not_overwritten(set
 
 @pytest.mark.parametrize('cues',[[],['Original body']])
 def test_operit_completed_tagging_backfills_cues_once_and_respects_opt_out(settings,monkeypatch,cues):
-    from serein.tagging_entities import snapshot,VERSION
+    from lattice.tagging_entities import snapshot,VERSION
     data=operit()
     upload=stage(settings.database,json.dumps(data),'old-operit.json','auto',True)
     advance_import(settings,upload['id'])
@@ -391,7 +391,7 @@ def test_operit_completed_tagging_backfills_cues_once_and_respects_opt_out(setti
     async def complete(model,payload):
         calls.append(payload)
         return {'choices':[{'message':{'content':json.dumps({'domain':'life','entities':[],'cues':cues})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     for _ in range(3):asyncio.run(process(settings.database))
     assert len(calls)==1
     with Store(settings.database) as store:
@@ -410,7 +410,7 @@ def test_operit_named_cue_is_dropped_without_retry(settings,monkeypatch):
     async def complete(model,payload):
         request=json.loads(payload['messages'][1]['content']);calls.append(request)
         return {'choices':[{'message':{'content':json.dumps({'domain':'life','entities':[],'cues':['Atlas remembers this']})}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     asyncio.run(process(settings.database))
     with Store(settings.database) as store:
         row=store.conn.execute('SELECT * FROM import_tag_jobs').fetchone()
@@ -421,8 +421,8 @@ def test_operit_named_cue_is_dropped_without_retry(settings,monkeypatch):
 
 
 def test_retry_one_preserves_success_and_other_failures(settings):
-    from serein.imports import initialize_imports
-    from serein.api.imports import routes
+    from lattice.imports import initialize_imports
+    from lattice.api.imports import routes
     from fastapi import FastAPI
     initialize_imports(settings.database)
     with Store(settings.database) as store:
@@ -436,7 +436,7 @@ def test_retry_one_preserves_success_and_other_failures(settings):
         assert [tuple(row) for row in rows]==[('a','pending',3,'prior reason'),('b','failed',3,'prior reason'),('c','done',3,'prior reason')]
 
 def test_import_history_uses_compact_boundary_without_consuming_live_chat(settings):
-    from serein.compat.raw_archive import raw_archive
+    from lattice.compat.raw_archive import raw_archive
     preview=stage(settings.database,json.dumps(messages(2)),'history.json','auto',False)
     assert advance_import(settings,preview['id'])['inserted']==2
     with Store(settings.database,read_only=True) as store:
@@ -476,7 +476,7 @@ def test_legacy_import_without_archived_marker_stays_released(settings):
     with Store(settings.database) as store:
         store.conn.execute('DELETE FROM pipeline_import_boundaries WHERE upload_id=?',(preview['id'],))
         store.conn.execute("DELETE FROM raw_processing WHERE outcome='archived_only' AND operation_id LIKE 'file-import:%'")
-    from serein.imports import archive_imported_originals
+    from lattice.imports import archive_imported_originals
     with Store(settings.database) as store:
         archive_imported_originals(store.conn)
         assert store.conn.execute('SELECT count(*) FROM pipeline_import_boundaries WHERE upload_id=?',(preview['id'],)).fetchone()[0]==0
@@ -484,7 +484,7 @@ def test_legacy_import_without_archived_marker_stays_released(settings):
 
 
 def test_import_summary_choice_runs_without_automatic_switch(settings):
-    from serein.work_tasks import work, status
+    from lattice.work_tasks import work, status
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     preview=stage(settings.database,json.dumps(messages(2)),'choice.json','auto',False)
     advance_import(settings,preview['id'])
@@ -503,15 +503,15 @@ def test_import_summary_choice_runs_without_automatic_switch(settings):
     result=asyncio.run(work(settings,'pipeline',task['arguments']))
     assert result['role']=='track_router'
     assert {row['content'] for row in result['request']['messages']}=={'  original 0\n','  original 1\n'}
-    from serein.imports import release_imported_originals
+    from lattice.imports import release_imported_originals
     with pytest.raises(ValueError,match='不能再跳过'):
         release_imported_originals(settings.database,preview['id'],skip=True)
 
 
 @pytest.mark.parametrize('terminal',['current','settled_today','waiting_settlement_window','auto_paused','processed'])
 def test_summary_request_during_running_pass_is_not_lost(settings,terminal):
-    from serein.work_tasks import execute, enqueue, status, work
-    from serein.imports import release_imported_originals
+    from lattice.work_tasks import execute, enqueue, status, work
+    from lattice.imports import release_imported_originals
     preview=stage(settings.database,json.dumps(messages()),'racing.json','auto',False)
     advance_import(settings,preview['id'])
     async def ending_pass():
@@ -531,7 +531,7 @@ def test_summary_request_during_running_pass_is_not_lost(settings,terminal):
 
 @pytest.mark.parametrize('terminal',['awaiting_agent','paused','needs_repair','error'])
 def test_summary_followup_does_not_retry_held_or_failed_tasks(settings,terminal):
-    from serein.work_tasks import execute, enqueue, status
+    from lattice.work_tasks import execute, enqueue, status
     async def held_pass():
         enqueue(settings.database,'pipeline',{'include_recent':True},followup_if_running=True)
         if terminal=='error':raise ValueError('synthetic failure')
@@ -545,7 +545,7 @@ def test_summary_followup_does_not_retry_held_or_failed_tasks(settings,terminal)
 
 
 def test_summary_choice_rejects_incomplete_operit_and_missing_imports(settings):
-    from serein.imports import release_imported_originals
+    from lattice.imports import release_imported_originals
     preview=stage(settings.database,json.dumps(messages(26)),'unfinished.json','auto',False)
     advance_import(settings,preview['id'])
     for skip in (True,False):
@@ -561,8 +561,8 @@ def test_summary_choice_rejects_incomplete_operit_and_missing_imports(settings):
 
 
 def test_skip_only_affects_selected_import_and_not_live_originals(settings):
-    from serein.imports import release_imported_originals
-    from serein.compat.raw_archive import raw_archive
+    from lattice.imports import release_imported_originals
+    from lattice.compat.raw_archive import raw_archive
     first=stage(settings.database,json.dumps(messages()),'first.json','auto',False)
     other=messages();other['id']='other-session'
     second=stage(settings.database,json.dumps(other),'second.json','auto',False)
@@ -582,7 +582,7 @@ def test_skip_only_affects_selected_import_and_not_live_originals(settings):
 
 
 def test_summary_followup_respects_explicit_pause(settings):
-    from serein.work_tasks import execute, enqueue, pause, status
+    from lattice.work_tasks import execute, enqueue, pause, status
     async def finishing():
         enqueue(settings.database,'pipeline',{'include_recent':True},followup_if_running=True)
         pause(settings.database,'pipeline')
@@ -592,7 +592,7 @@ def test_summary_followup_respects_explicit_pause(settings):
 
 
 def test_duplicate_only_import_summary_does_not_queue_unrelated_work(settings):
-    from serein.work_tasks import status
+    from lattice.work_tasks import status
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     first=stage(settings.database,json.dumps(messages()),'first.json','auto',False)
     advance_import(settings,first['id'])

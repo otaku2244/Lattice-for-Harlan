@@ -43,7 +43,7 @@ function secretValue(name) {
 
 function semanticRouteDraftPath() {
   return String(
-    process.env.SEREIN_ROUTE_DRAFT_FILE || fileURLToPath(new URL("./.runtime/semantic-route-draft.json", import.meta.url)),
+    process.env.LATTICE_ROUTE_DRAFT_FILE || fileURLToPath(new URL("./.runtime/semantic-route-draft.json", import.meta.url)),
   ).trim();
 }
 
@@ -146,9 +146,9 @@ function parseMcpEvent(text) {
   return JSON.parse(data);
 }
 
-import { sereinConfigured, callSereinBackend, callSereinTool } from './server/sereinBackend.mjs';
+import { latticeConfigured, callLatticeBackend, callLatticeTool } from './server/latticeBackend.mjs';
 
-async function callSereinDashboard(path, options = {}) { return callSereinBackend(path, options); }
+async function callLatticeDashboard(path, options = {}) { return callLatticeBackend(path, options); }
 
 async function readLiveMemoryProjection(sourceIds) {
   const safeSourceIds = Array.from(new Set(
@@ -156,7 +156,7 @@ async function readLiveMemoryProjection(sourceIds) {
       .map((sourceId) => String(sourceId || "").trim())
       .filter((sourceId) => /^[A-Za-z0-9_.:#-]{1,160}$/.test(sourceId)),
   )).slice(0, 400);
-  const upstream = await callSereinDashboard("/api/serein/memory-projection", {
+  const upstream = await callLatticeDashboard("/api/lattice/memory-projection", {
     method: "POST",
     body: { source_ids: safeSourceIds },
   });
@@ -168,7 +168,7 @@ async function readLiveDiaries() {
   const diaries = [];
   let offset = 0;
   while (offset < 500) {
-    const upstream = await callSereinDashboard("/diaries/search", {
+    const upstream = await callLatticeDashboard("/diaries/search", {
       method: "POST",
       body: { keyword: "", limit: 100, offset },
     });
@@ -184,7 +184,7 @@ async function readLiveDiaries() {
   return {
     status: "ok",
     snapshotId: Buffer.from(fingerprint, "utf8").toString("base64url"),
-    source: "Serein DiaryStore live read-only projection",
+    source: "Lattice DiaryStore live read-only projection",
     entries: diaries,
   };
 }
@@ -279,7 +279,7 @@ async function attachNarrativeSourceLedgers(items) {
 
   let events = [];
   if (eventIds.length) {
-    const result = await callSereinDashboard("/api/fact-events/read-many", {
+    const result = await callLatticeDashboard("/api/fact-events/read-many", {
       method: "POST",
       body: { item_ids: eventIds, include_sources: false, resolve_active_successors: false },
     });
@@ -288,7 +288,7 @@ async function attachNarrativeSourceLedgers(items) {
 
   let scenes = [];
   if (sceneIds.length) {
-    const result = await callSereinDashboard("/api/buckets/light?include_archive=1&limit=2000");
+    const result = await callLatticeDashboard("/api/buckets/light?include_archive=1&limit=2000");
     if (result.ok) scenes = Array.isArray(result.payload?.buckets) ? result.payload.buckets : [];
   }
 
@@ -299,7 +299,7 @@ async function attachNarrativeSourceLedgers(items) {
     const found = new Set(diaries.map((entry) => String(entry.id)));
     for (const diaryId of diaryIds) {
       if (found.has(diaryId)) continue;
-      const exact = await callSereinDashboard(`/diaries/${encodeURIComponent(diaryId)}`);
+      const exact = await callLatticeDashboard(`/diaries/${encodeURIComponent(diaryId)}`);
       if (exact.ok) diaries.push(exact.payload);
     }
   }
@@ -308,14 +308,14 @@ async function attachNarrativeSourceLedgers(items) {
 }
 
 export async function readLiveNarratives() {
-  const index = await callSereinDashboard("/api/narrative-rolls?limit=100");
+  const index = await callLatticeDashboard("/api/narrative-rolls?limit=100");
   if (!index.ok) throw new Error(`narrative_live_projection_${index.status}`);
   const summaries = Array.isArray(index.payload?.items) ? index.payload.items : [];
   const items = [];
   for (const summary of summaries) {
     const narrativeId = String(summary?.narrative_id || "").trim();
     if (!narrativeId) continue;
-    const result = await callSereinDashboard(`/api/narrative-rolls?narrative_id=${encodeURIComponent(narrativeId)}`);
+    const result = await callLatticeDashboard(`/api/narrative-rolls?narrative_id=${encodeURIComponent(narrativeId)}`);
     if (!result.ok) throw new Error(`narrative_live_projection_${result.status}`);
     items.push(result.payload);
   }
@@ -326,13 +326,13 @@ export async function readLiveNarratives() {
   return {
     status: "ok",
     snapshotId: createHash("sha256").update(fingerprint).digest("hex"),
-    source: "Serein Narrative Roll registry live read-only projection",
+    source: "Lattice Narrative Roll registry live read-only projection",
     items: enrichedItems,
   };
 }
 
 export async function readLiveWindowShadows() {
-  const upstream = await callSereinDashboard("/api/window-shadows?limit=100&include_content=1");
+  const upstream = await callLatticeDashboard("/api/window-shadows?limit=100&include_content=1");
   if (!upstream.ok) throw new Error(`window_shadow_live_projection_${upstream.status}`);
   const windows = Array.isArray(upstream.payload?.windows) ? upstream.payload.windows : [];
   const shadows = windows.map((item) => {
@@ -368,9 +368,9 @@ export async function readLiveWindowShadows() {
       text,
       sections: item?.sections ?? {},
       scenes: Array.isArray(item?.scenes) ? item.scenes : [],
-      sourceLabel: "Serein",
+      sourceLabel: "Lattice",
       statusLabel: "已入库窗影",
-      sourceKind: "serein-window-shadow",
+      sourceKind: "lattice-window-shadow",
       documentOwnsTitle: headings[0] === title,
       sourceId: String(item?.window_id || ""),
       sourceSessionId: String(item?.session_id || ""),
@@ -381,7 +381,7 @@ export async function readLiveWindowShadows() {
   return {
     status: "ok",
     snapshotId: createHash("sha256").update(fingerprint).digest("hex"),
-    source: "Serein Window Shadow live read-only projection",
+    source: "Lattice Window Shadow live read-only projection",
     shadows,
   };
 }
@@ -392,22 +392,22 @@ export async function readAssistantBridgeHookLedger(limit = 20, beforeId = 0, re
   if (afterId != null) params.set('after_id', String(Math.max(0, Number.parseInt(afterId, 10) || 0)));
   const ids = [...new Set((Array.isArray(reviewIds) ? reviewIds : []).map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 500);
   if (ids.length) params.set('review_ids', ids.join(','));
-  const result = await callSereinBackend(`/v1/host/deliveries?${params}`);
+  const result = await callLatticeBackend(`/v1/host/deliveries?${params}`);
   if (!result.ok) throw new Error(`delivery_history_${result.status}`);
   return result.payload;
 }
 async function readAssistantBridgeEvidenceMessages(options) {
-  const result = await callSereinBackend("/v1/host/messages/search", {method:"POST", body:options});
+  const result = await callLatticeBackend("/v1/host/messages/search", {method:"POST", body:options});
   if (!result.ok) throw new Error(`source_read_${result.status}`);
   return result.payload;
 }
 
-function sereinGatewayBridge() {
+function latticeGatewayBridge() {
   return {
-    name: "serein-gateway-bridge",
-    configurePreviewServer(server) { sereinGatewayBridge().configureServer(server); },
+    name: "lattice-gateway-bridge",
+    configurePreviewServer(server) { latticeGatewayBridge().configureServer(server); },
     configureServer(server) {
-      server.middlewares.use("/__serein/install-location", (request, response) => {
+      server.middlewares.use("/__lattice/install-location", (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method !== "GET") {
@@ -415,13 +415,13 @@ function sereinGatewayBridge() {
           response.end(JSON.stringify({ error: "method_not_allowed" }));
           return;
         }
-        const root = process.env.SEREIN_INSTALL_ROOT || fileURLToPath(new URL("../", import.meta.url));
-        response.end(JSON.stringify({ root, installed: Boolean(process.env.SEREIN_INSTALL_ROOT || existsSync(fileURLToPath(new URL("../deploy/installation.json", import.meta.url)))),
-          legacySourceRoot: process.env.SEREIN_LEGACY_SOURCE_HOST || "",
-          legacySourceConfigured: process.env.SEREIN_LEGACY_SOURCE_CONFIGURED === "1" }));
+        const root = process.env.LATTICE_INSTALL_ROOT || fileURLToPath(new URL("../", import.meta.url));
+        response.end(JSON.stringify({ root, installed: Boolean(process.env.LATTICE_INSTALL_ROOT || existsSync(fileURLToPath(new URL("../deploy/installation.json", import.meta.url)))),
+          legacySourceRoot: process.env.LATTICE_LEGACY_SOURCE_HOST || "",
+          legacySourceConfigured: process.env.LATTICE_LEGACY_SOURCE_CONFIGURED === "1" }));
       });
 
-      server.middlewares.use("/__serein/assistant-bridge/hook-injections", async (request, response) => {
+      server.middlewares.use("/__lattice/assistant-bridge/hook-injections", async (request, response) => {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
@@ -449,7 +449,7 @@ function sereinGatewayBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/gateway/injections", async (request, response) => {
+      server.middlewares.use("/__lattice/gateway/injections", async (request, response) => {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
@@ -468,7 +468,7 @@ function sereinGatewayBridge() {
           if (beforeId) params.set("before_id", String(beforeId));
           if (body.afterId != null) params.set("after_id", String(Math.max(0, Number.parseInt(body.afterId, 10) || 0)));
           if (reviewIds.length) params.set("review_ids", reviewIds.join(","));
-          const upstream = await callSereinDashboard(`/api/gateway-injections?${params.toString()}`);
+          const upstream = await callLatticeDashboard(`/api/gateway-injections?${params.toString()}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -482,7 +482,7 @@ function sereinGatewayBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/gateway/recall", async (request, response) => {
+      server.middlewares.use("/__lattice/gateway/recall", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -490,8 +490,8 @@ function sereinGatewayBridge() {
           return;
         }
 
-        const gatewayToken = String(process.env.SEREIN_MEMORY_TOKEN || "").trim();
-        const gatewayBase = String(process.env.SEREIN_MEMORY_URL || "").replace(/\/$/, "");
+        const gatewayToken = String(process.env.LATTICE_MEMORY_TOKEN || "").trim();
+        const gatewayBase = String(process.env.LATTICE_MEMORY_URL || "").replace(/\/$/, "");
         if (!gatewayToken) {
           response.statusCode = 503;
           response.end(JSON.stringify({
@@ -530,7 +530,7 @@ function sereinGatewayBridge() {
             },
             body: JSON.stringify({
               query,
-              session_id: `serein-basement-${randomUUID()}`,
+              session_id: `lattice-basement-${randomUUID()}`,
               recall_mode: "full",
               include_debug: true,
               simulation,
@@ -556,7 +556,7 @@ function sereinGatewayBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/gateway/semantic-route-draft", async (request, response) => {
+      server.middlewares.use("/__lattice/gateway/semantic-route-draft", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (!["GET", "PUT", "DELETE"].includes(request.method)) {
           response.statusCode = 405;
@@ -590,7 +590,7 @@ function sereinGatewayBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/gateway/semantic-routes", async (request, response) => {
+      server.middlewares.use("/__lattice/gateway/semantic-routes", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (!["GET", "POST"].includes(request.method)) {
           response.statusCode = 405;
@@ -598,8 +598,8 @@ function sereinGatewayBridge() {
           return;
         }
 
-        const gatewayToken = String(process.env.SEREIN_MEMORY_TOKEN || "").trim();
-        const gatewayBase = String(process.env.SEREIN_MEMORY_URL || "").replace(/\/$/, "");
+        const gatewayToken = String(process.env.LATTICE_MEMORY_TOKEN || "").trim();
+        const gatewayBase = String(process.env.LATTICE_MEMORY_URL || "").replace(/\/$/, "");
         if (!gatewayToken) {
           response.statusCode = 503;
           response.end(JSON.stringify({
@@ -638,7 +638,7 @@ function sereinGatewayBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/gateway/domain-policies", async (request, response) => {
+      server.middlewares.use("/__lattice/gateway/domain-policies", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (!["GET", "POST"].includes(request.method)) {
           response.statusCode = 405;
@@ -646,8 +646,8 @@ function sereinGatewayBridge() {
           return;
         }
 
-        const gatewayToken = String(process.env.SEREIN_MEMORY_TOKEN || "").trim();
-        const gatewayBase = String(process.env.SEREIN_MEMORY_URL || "").replace(/\/$/, "");
+        const gatewayToken = String(process.env.LATTICE_MEMORY_TOKEN || "").trim();
+        const gatewayBase = String(process.env.LATTICE_MEMORY_URL || "").replace(/\/$/, "");
         if (!gatewayToken) {
           response.statusCode = 503;
           response.end(JSON.stringify({
@@ -689,35 +689,35 @@ function sereinGatewayBridge() {
   };
 }
 
-function sereinMemoryBridge() {
+function latticeMemoryBridge() {
   return {
-    name: "serein-memory-bridge",
-    configurePreviewServer(server) { sereinMemoryBridge().configureServer(server); },
+    name: "lattice-memory-bridge",
+    configurePreviewServer(server) { latticeMemoryBridge().configureServer(server); },
     configureServer(server) {
       const narrativePreviewJobs = createNarrativePreviewJobs();
-      appearanceBridge(server, callSereinBackend, readJsonBody);
-      eventMailboxBridge(server, callSereinBackend, readJsonBody);
-      server.middlewares.use("/__serein/export/markdown", async (request,response)=>{
+      appearanceBridge(server, callLatticeBackend, readJsonBody);
+      eventMailboxBridge(server, callLatticeBackend, readJsonBody);
+      server.middlewares.use("/__lattice/export/markdown", async (request,response)=>{
         if(request.method!=="GET"){response.statusCode=405;response.end();return;}
         try {
-          const base=process.env.SEREIN_MEMORY_URL;
-          const token=process.env.SEREIN_MEMORY_TOKEN;
+          const base=process.env.LATTICE_MEMORY_URL;
+          const token=process.env.LATTICE_MEMORY_TOKEN;
           if(!base || !token)throw new Error("backend_not_configured");
           const result=await fetch(base.replace(/\/$/,"")+"/v1/export/markdown",{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(60_000)});
           response.statusCode=result.status;
           response.setHeader("Cache-Control","no-store");
           response.setHeader("Content-Type",result.ok?"application/zip":"application/json");
-          if(result.ok)response.setHeader("Content-Disposition",'attachment; filename="serein-memories.zip"');
+          if(result.ok)response.setHeader("Content-Disposition",'attachment; filename="lattice-memories.zip"');
           response.end(Buffer.from(await result.arrayBuffer()));
         } catch {response.statusCode=502;response.end("Export unavailable");}
       });
-      server.middlewares.use("/__serein/export/backup", backupDownload);
-      server.middlewares.use("/__serein/migration", async (request,response)=>{
+      server.middlewares.use("/__lattice/export/backup", backupDownload);
+      server.middlewares.use("/__lattice/migration", async (request,response)=>{
         response.setHeader("Cache-Control","no-store");
         const path=new URL(request.url,"http://localhost").pathname;
         if(request.method==="GET" && /^\/[0-9a-f]{64}\/export$/.test(path)){
           try {
-            const base=process.env.SEREIN_MEMORY_URL,token=process.env.SEREIN_MEMORY_TOKEN;
+            const base=process.env.LATTICE_MEMORY_URL,token=process.env.LATTICE_MEMORY_TOKEN;
             if(!base||!token)throw new Error("backend_not_configured");
             const result=await fetch(base.replace(/\/$/,"")+"/v1/migration"+path,
               {headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(1_200_000)});
@@ -735,25 +735,25 @@ function sereinMemoryBridge() {
         if(!allowed){response.statusCode=404;response.end();return;}
         try {
           let body=request.method==="POST"?await readJsonBody(request,path==="/preview"?90_000_100:8000):undefined;
-          if(path==="/preview-path" && process.env.SEREIN_LEGACY_SOURCE_HOST) {
-            const hostRoot=process.env.SEREIN_LEGACY_SOURCE_HOST;
+          if(path==="/preview-path" && process.env.LATTICE_LEGACY_SOURCE_HOST) {
+            const hostRoot=process.env.LATTICE_LEGACY_SOURCE_HOST;
             const paths=/^[A-Za-z]:[\\/]/.test(hostRoot)?win32:posix;
             const source=String(body.path||"").trim();
-            if(!paths.isAbsolute(source)){response.statusCode=400;response.end(JSON.stringify({detail:"请输入运行 Serein 的机器上的绝对路径"}));return;}
+            if(!paths.isAbsolute(source)){response.statusCode=400;response.end(JSON.stringify({detail:"请输入运行 Lattice 的机器上的绝对路径"}));return;}
             const relative=paths.relative(paths.resolve(hostRoot),paths.resolve(source));
             if(relative===".." || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative)) {
               response.statusCode=400;response.end(JSON.stringify({detail:`该路径尚未只读挂载；请在安装菜单 7 授权它所在的旧库目录`}));return;
             }
             body={path:`/legacy/input${relative?`/${relative.split(paths.sep).join("/")}`:""}`,display_path:source};
           }
-          const result=await callSereinBackend(`/v1/migration${path==="/"?"":path}`,{
+          const result=await callLatticeBackend(`/v1/migration${path==="/"?"":path}`,{
             method:request.method,...(request.method==="POST"?{body}:{}),timeoutMs:120_000,
           });
           response.statusCode=result.status;response.end(JSON.stringify(result.payload));
         }catch{response.statusCode=502;response.end(JSON.stringify({detail:"旧库操作暂未完成，请刷新任务状态后重试。"}));}
       });
 
-      server.middlewares.use("/__serein/resume", async (request,response) => {
+      server.middlewares.use("/__lattice/resume", async (request,response) => {
         response.setHeader("Content-Type","application/json; charset=utf-8");
         response.setHeader("Cache-Control","no-store");
         if(request.method!=="POST" || !["","/"].includes(request.url?.split("?")[0])) {
@@ -764,12 +764,12 @@ function sereinMemoryBridge() {
             (request.headers.origin && new URL(request.headers.origin).host!==request.headers.host)) {
             response.statusCode=403;response.end(JSON.stringify({error:"origin_not_allowed"}));return;
           }
-          const result=await callSereinBackend("/v1/extensions/resume",{method:"POST",body:await readJsonBody(request,256*1024)});
+          const result=await callLatticeBackend("/v1/extensions/resume",{method:"POST",body:await readJsonBody(request,256*1024)});
           response.statusCode=result.status;response.end(JSON.stringify(result.payload));
         } catch {response.statusCode=502;response.end(JSON.stringify({detail:"续接资料暂时不可用，请重新读取。"}));}
       });
 
-      server.middlewares.use("/__serein/settings", async (request, response) => {
+      server.middlewares.use("/__lattice/settings", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         const candidates = request.url?.split("?")[0] === "/resume-candidates";
@@ -787,7 +787,7 @@ function sereinMemoryBridge() {
           response.statusCode = 403; response.end(JSON.stringify({ error: "origin_not_allowed" })); return;
         }
         try {
-          const result = await callSereinBackend(candidates || indexStatus || resumeIndex ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
+          const result = await callLatticeBackend(candidates || indexStatus || resumeIndex ? "/v1/settings" + request.url : prepare ? "/v1/settings/prepare-memory" : discovery ? "/v1/settings/models/discover" : template ? "/v1/settings/upstreams-template" : "/v1/settings", {
             method: request.method,
             ...(request.method === "PATCH" || resumeIndex || template || discovery ? { body: await readJsonBody(request, 256_000) } : {}),
           }, {timeout: prepare ? 600_000 : 30_000});
@@ -796,7 +796,7 @@ function sereinMemoryBridge() {
           response.statusCode = 502; response.end(JSON.stringify({ error: "settings_unavailable" }));
         }
       });
-      server.middlewares.use("/__serein/pipeline", async (request,response)=>{
+      server.middlewares.use("/__lattice/pipeline", async (request,response)=>{
         response.setHeader("Content-Type","application/json; charset=utf-8");
         response.setHeader("Cache-Control","no-store");
         const action=request.url?.split("?")[0];
@@ -809,13 +809,13 @@ function sereinMemoryBridge() {
         }
         try {
           const path=action==="/submit"?"/v1/extensions/pipeline_submit":`/v1/pipeline${action}`;
-          const result=await callSereinBackend(path,{
+          const result=await callLatticeBackend(path,{
             method:request.method,...(request.method==="POST"?{body:await readJsonBody(request,2_000_000)}:{}),
           },{timeout:30_000});
           response.statusCode=result.status;response.end(JSON.stringify(result.payload));
         } catch {response.statusCode=502;response.end(JSON.stringify({error:"pipeline_unavailable"}));}
       });
-      server.middlewares.use("/__serein/imports", async (request,response)=>{
+      server.middlewares.use("/__lattice/imports", async (request,response)=>{
         response.setHeader("Content-Type","application/json; charset=utf-8");
         response.setHeader("Cache-Control","no-store");
         const path=request.url?.split("?")[0] || "/";
@@ -828,34 +828,34 @@ function sereinMemoryBridge() {
           response.statusCode=403;response.end(JSON.stringify({error:"origin_not_allowed"}));return;
         }
         try {
-          const result=await callSereinBackend('/v1/imports'+(path==='/'?'':path),{
+          const result=await callLatticeBackend('/v1/imports'+(path==='/'?'':path),{
             method:request.method,...(request.method==='POST'?{body:await readJsonBody(request,200_000_000)}:{}),
           },{timeout:120_000});
           response.statusCode=result.status;response.end(JSON.stringify(result.payload));
         } catch {response.statusCode=502;response.end(JSON.stringify({error:"import_unavailable"}));}
       });
-      server.middlewares.use("/__serein/companion", async (request, response) => {
+      server.middlewares.use("/__lattice/companion", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         const url = new URL(request.url, "http://localhost");
         if (!/^\/(persona|memos(?:\/[a-zA-Z0-9_-]+)?)$/.test(url.pathname) || !["GET","POST","PUT","PATCH","DELETE"].includes(request.method)) {
           response.statusCode=404; response.end(); return;
         }
         try {
-          const result=await callSereinBackend(`/v1/companion${url.pathname}${url.search}`, {
+          const result=await callLatticeBackend(`/v1/companion${url.pathname}${url.search}`, {
             method:request.method,...(!["GET","DELETE"].includes(request.method) ? {body:await readJsonBody(request,100_000)} : {}),
           });
           response.statusCode=result.status;response.end(JSON.stringify(result.payload));
         } catch { response.statusCode=502;response.end(JSON.stringify({detail:"连接暂不可用，内容没有保存。"})); }
       });
 
-      server.middlewares.use("/__serein/personal", async (request, response) => {
+      server.middlewares.use("/__lattice/personal", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         try {
           const url = new URL(request.url, "http://localhost");
           if (!["/", "/import"].includes(url.pathname) || !["GET", "POST"].includes(request.method)) {
             response.statusCode = 405; response.end(JSON.stringify({ error: "method_not_allowed" })); return;
           }
-          const upstream = await callSereinBackend(`/api/personal${url.pathname === "/import" ? "/import" : ""}${url.search}`, {
+          const upstream = await callLatticeBackend(`/api/personal${url.pathname === "/import" ? "/import" : ""}${url.search}`, {
             method: request.method,
             body: request.method === "POST" ? await readJsonBody(request, 2_000_000) : undefined,
           });
@@ -865,7 +865,7 @@ function sereinMemoryBridge() {
           response.statusCode = 502; response.end(JSON.stringify({ error: "personal_save_unavailable" }));
         }
       });
-      server.middlewares.use("/__serein/live/memory-scenes", async (request, response) => {
+      server.middlewares.use("/__lattice/live/memory-scenes", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -877,7 +877,7 @@ function sereinMemoryBridge() {
           response.statusCode = 200;
           response.end(JSON.stringify(await readLiveMemoryProjection(body.sourceIds)));
         } catch (error) {
-          console.error("[serein-memory-bridge] live Scene projection failed", error);
+          console.error("[lattice-memory-bridge] live Scene projection failed", error);
           response.statusCode = error?.name === "AbortError" ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
@@ -889,7 +889,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/fact-events", async (request, response) => {
+      server.middlewares.use("/__lattice/live/fact-events", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -911,7 +911,7 @@ function sereinMemoryBridge() {
           });
           const query = String(body.query || "").trim();
           if (query) params.set("query", query);
-          const upstream = await callSereinDashboard(`/api/fact-events?${params.toString()}`);
+          const upstream = await callLatticeDashboard(`/api/fact-events?${params.toString()}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -926,7 +926,7 @@ function sereinMemoryBridge() {
 
       // Local fork: 编辑前取一次完整快照。列表项默认不含原文，若依赖异步补全
       // 就会出现「原文 0 条」的编辑态，这里给出确定性的读取。
-      server.middlewares.use("/__serein/memory/event-detail", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/event-detail", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method !== "POST") {
@@ -942,7 +942,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/fact-events/read-many", {
+          const upstream = await callLatticeDashboard("/api/fact-events/read-many", {
             method: "POST",
             body: { item_ids: [itemId], include_sources: true },
           });
@@ -954,7 +954,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/revise-fact-event", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/revise-fact-event", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -972,7 +972,7 @@ function sereinMemoryBridge() {
               }))
               .filter((item) => item.source_system && item.message_id)
             : null;
-          const upstream = await callSereinDashboard("/api/fact-events/revise", {
+          const upstream = await callLatticeDashboard("/api/fact-events/revise", {
             method: "POST",
             body: {
               item_id: String(body.itemId || "").trim(),
@@ -994,7 +994,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/rewrite-fact-event", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/rewrite-fact-event", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1004,7 +1004,7 @@ function sereinMemoryBridge() {
         try {
           const body = await readJsonBody(request);
           // 模型要跑 20~90 秒，带修复重试可到 3 分钟，必须放宽默认的 30 秒。
-          const upstream = await callSereinDashboard("/api/fact-events/rewrite", {
+          const upstream = await callLatticeDashboard("/api/fact-events/rewrite", {
             method: "POST",
             body: { item_id: String(body.itemId || "").trim() },
             timeoutMs: 300_000,
@@ -1022,7 +1022,7 @@ function sereinMemoryBridge() {
 
       // Local fork: 人工改绑原文的候选池。只给当前已绑定原文所在会话的前后文，
       // 外加关键词检索；正文按需截断，真正落库的内容由后端回查归档。
-      server.middlewares.use("/__serein/memory/source-candidates", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/source-candidates", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method !== "POST") {
@@ -1038,7 +1038,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/fact-events/source-candidates", {
+          const upstream = await callLatticeDashboard("/api/fact-events/source-candidates", {
             method: "POST",
             body: {
               item_id: itemId,
@@ -1064,7 +1064,7 @@ function sereinMemoryBridge() {
 
       // Local fork: 人工把相邻的碎事件并成一条。合并只取原文并集并生成新版本，
       // 旧版一律 superseded，其中被并入的那些再打 tombstoned（导出与召回都不再出现）。
-      server.middlewares.use("/__serein/memory/merge-candidates", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/merge-candidates", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method !== "GET") {
@@ -1073,13 +1073,13 @@ function sereinMemoryBridge() {
           return;
         }
         try {
-          const itemId = String(new URL(request.url || "/", "http://serein.local").searchParams.get("itemId") || "").trim();
+          const itemId = String(new URL(request.url || "/", "http://lattice.local").searchParams.get("itemId") || "").trim();
           if (!itemId) {
             response.statusCode = 400;
             response.end(JSON.stringify({ ok: false, message: "缺少 itemId。" }));
             return;
           }
-          const current = await callSereinDashboard("/api/fact-events/read-many", {
+          const current = await callLatticeDashboard("/api/fact-events/read-many", {
             method: "POST",
             body: { item_ids: [itemId], include_sources: true },
           });
@@ -1095,7 +1095,7 @@ function sereinMemoryBridge() {
             return Number.isNaN(stamp) ? "" : new Date(stamp + offset * 86_400_000).toISOString().slice(0, 10);
           };
           const days = [-2, -1, 0, 1, 2].map(dayAt).filter(Boolean);
-          const listed = await Promise.all(days.map((day) => callSereinDashboard(
+          const listed = await Promise.all(days.map((day) => callLatticeDashboard(
             `/api/fact-events?type=event&status=active&date=${day}&limit=200`,
           ).catch(() => ({ payload: { items: [] } }))));
           const seen = new Set([itemId]);
@@ -1140,7 +1140,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/merge-fact-events", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/merge-fact-events", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method !== "POST") {
@@ -1161,7 +1161,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ ok: false, message: "需要一条保留的事件和至少一条被并入的事件。" }));
             return;
           }
-          const read = await callSereinDashboard("/api/fact-events/read-many", {
+          const read = await callLatticeDashboard("/api/fact-events/read-many", {
             method: "POST",
             body: { item_ids: [targetId, ...mergeIds], include_sources: true },
           });
@@ -1223,7 +1223,7 @@ function sereinMemoryBridge() {
             .some((item) => item.recallable === false) ? false
             : [target, ...mergeIds.map((id) => byId.get(id))].some((item) => item.recallable == null) ? null
               : true;
-          const replaced = await callSereinDashboard("/api/fact-events/replacements", {
+          const replaced = await callLatticeDashboard("/api/fact-events/replacements", {
             method: "POST",
             body: {
               items: [{
@@ -1252,13 +1252,13 @@ function sereinMemoryBridge() {
           const tombstoned = [];
           const tombstoneFailed = [];
           for (const id of mergeIds) {
-            const marked = await callSereinDashboard("/api/fact-events/status", {
+            const marked = await callLatticeDashboard("/api/fact-events/status", {
               method: "POST",
               body: { item_id: id, status: "tombstoned" },
             }).catch(() => ({ ok: false }));
             (marked.ok ? tombstoned : tombstoneFailed).push(id);
           }
-          const fresh = await callSereinDashboard("/api/fact-events/read-many", {
+          const fresh = await callLatticeDashboard("/api/fact-events/read-many", {
             method: "POST",
             body: { item_ids: [successorId], include_sources: true },
           });
@@ -1277,7 +1277,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/set-fact-event-status", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/set-fact-event-status", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1286,7 +1286,7 @@ function sereinMemoryBridge() {
         }
         try {
           const body = await readJsonBody(request);
-          const upstream = await callSereinDashboard("/api/fact-events/status", {
+          const upstream = await callLatticeDashboard("/api/fact-events/status", {
             method: "POST",
             body: {
               item_id: String(body.itemId || "").trim(),
@@ -1304,7 +1304,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/delete-fact-event", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/delete-fact-event", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1313,7 +1313,7 @@ function sereinMemoryBridge() {
         }
         try {
           const body = await readJsonBody(request);
-          const upstream = await callSereinDashboard("/api/fact-events/delete", {
+          const upstream = await callLatticeDashboard("/api/fact-events/delete", {
             method: "POST",
             body: { item_id: String(body.itemId || "").trim() },
           });
@@ -1328,9 +1328,9 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/diaries", async (request, response) => {
+      server.middlewares.use("/__lattice/live/diaries", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
-        const route = new URL(request.url || "/", "http://serein.local");
+        const route = new URL(request.url || "/", "http://lattice.local");
         const diaryId = route.pathname.match(/^\/(\d+)\/?$/u)?.[1];
         const commentRoute = route.pathname.match(/^\/(\d+)\/comments(?:\/(\d+))?\/?$/u);
         const commentDiaryId = commentRoute?.[1];
@@ -1342,7 +1342,7 @@ function sereinMemoryBridge() {
         ) {
           try {
             const body = request.method === "POST" ? await readJsonBody(request) : undefined;
-            const upstream = await callSereinDashboard(
+            const upstream = await callLatticeDashboard(
               `/diaries/${commentDiaryId}/comments${commentId ? `/${commentId}` : ""}`,
               { method: request.method, body },
             );
@@ -1366,7 +1366,7 @@ function sereinMemoryBridge() {
         ) {
           try {
             const body = await readJsonBody(request, 256_000);
-            const upstream = await callSereinDashboard(
+            const upstream = await callLatticeDashboard(
               diaryId ? `/diaries/${diaryId}` : "/diaries",
               { method: diaryId ? "PUT" : "POST", body },
             );
@@ -1384,7 +1384,7 @@ function sereinMemoryBridge() {
 
         if (request.method === "DELETE" && diaryId) {
           try {
-            const upstream = await callSereinDashboard(`/diaries/${diaryId}`, { method: "DELETE" });
+            const upstream = await callLatticeDashboard(`/diaries/${diaryId}`, { method: "DELETE" });
             response.statusCode = upstream.status;
             response.end(JSON.stringify(upstream.payload));
           } catch (error) {
@@ -1416,7 +1416,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/narratives", async (request, response) => {
+      server.middlewares.use("/__lattice/live/narratives", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1438,7 +1438,7 @@ function sereinMemoryBridge() {
       });
 
       for (const action of ["discover-theme", "create-line"]) {
-        server.middlewares.use(`/__serein/narrative-${action}`, async (request, response) => {
+        server.middlewares.use(`/__lattice/narrative-${action}`, async (request, response) => {
           response.setHeader("Content-Type", "application/json; charset=utf-8");
           if (request.method !== "POST") {
             response.statusCode = 405;
@@ -1446,7 +1446,7 @@ function sereinMemoryBridge() {
             return;
           }
           try {
-            const result = await callSereinBackend(`/api/narrative-rolls/${action}`, {
+            const result = await callLatticeBackend(`/api/narrative-rolls/${action}`, {
               method: "POST", body: await readJsonBody(request, 64_000),
               timeoutMs: action === "discover-theme" ? 420_000 : 30_000,
             });
@@ -1459,7 +1459,7 @@ function sereinMemoryBridge() {
         });
       }
 
-      server.middlewares.use("/__serein/narrative-preview", async (request, response) => {
+      server.middlewares.use("/__lattice/narrative-preview", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         if (request.method === "GET") {
@@ -1486,7 +1486,7 @@ function sereinMemoryBridge() {
             return;
           }
           const jobId = narrativePreviewJobs.start(async (signal) => {
-            const upstream = await callSereinDashboard("/api/narrative-rolls/preview-input", {
+            const upstream = await callLatticeDashboard("/api/narrative-rolls/preview-input", {
               method: "POST",
               signal,
               body: {
@@ -1562,7 +1562,7 @@ function sereinMemoryBridge() {
             ? { status: "pending", job_id: jobId }
             : { status: "error", reason: "preview_busy", message: "已有预览正在生成，请稍后再试。" }));
         } catch (error) {
-          console.error("[serein-memory-bridge] Narrative preview failed", error);
+          console.error("[lattice-memory-bridge] Narrative preview failed", error);
           response.statusCode = error?.name === "AbortError" ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
@@ -1573,7 +1573,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/narrative-material-upload", async (request, response) => {
+      server.middlewares.use("/__lattice/narrative-material-upload", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1590,7 +1590,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ status: "invalid", reason: "invalid_upload_request", writes_performed: [] }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/narrative-rolls/material-uploads", {
+          const upstream = await callLatticeDashboard("/api/narrative-rolls/material-uploads", {
             method: "POST",
             body: {
               filename,
@@ -1610,7 +1610,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/narrative-save", async (request, response) => {
+      server.middlewares.use("/__lattice/narrative-save", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1626,7 +1626,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ status: "invalid", reason: "invalid_body_save_request" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/narrative-rolls/save-body", {
+          const upstream = await callLatticeDashboard("/api/narrative-rolls/save-body", {
             method: "POST",
             body: {
               narrative_id: narrativeId,
@@ -1641,7 +1641,7 @@ function sereinMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          console.error("[serein-memory-bridge] Narrative body save failed", error);
+          console.error("[lattice-memory-bridge] Narrative body save failed", error);
           response.statusCode = error?.name === "AbortError" ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
@@ -1651,7 +1651,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/window-shadows", async (request, response) => {
+      server.middlewares.use("/__lattice/live/window-shadows", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1672,7 +1672,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/dreams", async (request, response) => {
+      server.middlewares.use("/__lattice/live/dreams", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1682,7 +1682,7 @@ function sereinMemoryBridge() {
         try {
           const body = await readJsonBody(request);
           const limit = Math.max(1, Math.min(Number(body.limit) || 30, 100));
-          const upstream = await callSereinDashboard(`/api/dreams?limit=${limit}`);
+          const upstream = await callLatticeDashboard(`/api/dreams?limit=${limit}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -1694,7 +1694,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/live/dream-detail", async (request, response) => {
+      server.middlewares.use("/__lattice/live/dream-detail", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1709,7 +1709,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "dream_id_required" }));
             return;
           }
-          const upstream = await callSereinDashboard(`/api/dreams/${encodeURIComponent(dreamId)}`);
+          const upstream = await callLatticeDashboard(`/api/dreams/${encodeURIComponent(dreamId)}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -1721,7 +1721,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/scene-evidence", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/scene-evidence", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1736,7 +1736,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_id", message: "这张 Scene 没有可读取的原文证据 ID。" }));
             return;
           }
-          const result = await callSereinTool("read_scene_evidence", { scene_id: sceneId });
+          const result = await callLatticeTool("read_scene_evidence", { scene_id: sceneId });
           response.statusCode = result?.status === "invalid" ? 404 : result?.status === "error" ? 502 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
@@ -1748,7 +1748,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/bridge-source-messages", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/bridge-source-messages", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1767,7 +1767,7 @@ function sereinMemoryBridge() {
           response.statusCode = 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          console.error("[serein] bridge source messages failed", error);
+          console.error("[lattice] bridge source messages failed", error);
           response.statusCode = 502;
           response.end(JSON.stringify({
             error: "bridge_source_messages_failed",
@@ -1777,7 +1777,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/bind-scene-evidence", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/bind-scene-evidence", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1796,10 +1796,10 @@ function sereinMemoryBridge() {
           }
           const source = await readAssistantBridgeEvidenceMessages({ messageIds });
           const evidenceRefs = buildSceneEvidenceRefs(source.items, selections);
-          const result = await callSereinTool("bind_scene_evidence", {
+          const result = await callLatticeTool("bind_scene_evidence", {
             scene_id: sceneId,
             evidence_refs: evidenceRefs,
-            bound_by: "serein_memory_ui",
+            bound_by: "lattice_memory_ui",
           });
           response.statusCode = result?.status === "invalid" ? 400 : result?.status === "error" ? 502 : 200;
           response.end(JSON.stringify(result));
@@ -1813,7 +1813,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/unbind-scene-evidence", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/unbind-scene-evidence", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1831,10 +1831,10 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_evidence_unbind", message: "没有找到要取消的原文绑定。" }));
             return;
           }
-          const result = await callSereinTool("unbind_scene_evidence", {
+          const result = await callLatticeTool("unbind_scene_evidence", {
             scene_id: sceneId,
             evidence_ids: evidenceIds,
-            unbound_by: "serein_memory_ui",
+            unbound_by: "lattice_memory_ui",
           });
           response.statusCode = result?.status === "invalid" ? 400 : result?.status === "error" ? 502 : 200;
           response.end(JSON.stringify(result));
@@ -1847,7 +1847,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/read-scene", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/read-scene", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1862,7 +1862,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_id", message: "Scene ID 不正确。" }));
             return;
           }
-          const scene = await callSereinTool("read_memory", { memory_type: "scene", memory_id: sceneId });
+          const scene = await callLatticeTool("read_memory", { memory_type: "scene", memory_id: sceneId });
           response.statusCode = scene?.status === "not_found" ? 404 : 200;
           response.end(JSON.stringify(scene));
         } catch (error) {
@@ -1874,7 +1874,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/edit-scene-domain", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/edit-scene-domain", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1887,7 +1887,7 @@ function sereinMemoryBridge() {
           const domain = String(body.domain || "").trim();
           if (!/^[A-Za-z0-9_.:#-]{1,160}$/.test(sourceId)) {
             response.statusCode = 400;
-            response.end(JSON.stringify({ error: "invalid_scene_id", message: "这张 Scene 没有可写回的 Serein 来源。" }));
+            response.end(JSON.stringify({ error: "invalid_scene_id", message: "这张 Scene 没有可写回的 Lattice 来源。" }));
             return;
           }
           if (!canonicalSceneDomains.has(domain)) {
@@ -1896,7 +1896,7 @@ function sereinMemoryBridge() {
             return;
           }
 
-          const upstream = await callSereinDashboard("/api/buckets/bulk-update", {
+          const upstream = await callLatticeDashboard("/api/buckets/bulk-update", {
             method: "POST",
             body: { bucket_ids: [sourceId], domain },
           });
@@ -1906,12 +1906,12 @@ function sereinMemoryBridge() {
           response.statusCode = error?.name === "AbortError" ? 504 : 502;
           response.end(JSON.stringify({
             error: "memory_domain_write_failed",
-            message: error?.name === "AbortError" ? "修改主域超时。" : "没有把主域写回线上 Serein。",
+            message: error?.name === "AbortError" ? "修改主域超时。" : "没有把主域写回线上 Lattice。",
           }));
         }
       });
 
-      server.middlewares.use("/__serein/memory/edit-scene-cues", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/edit-scene-cues", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1935,7 +1935,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_cues", message: "保留 1～8 条 cue，每条不超过 80 字。" }));
             return;
           }
-          const result = await callSereinTool("edit_scene", {
+          const result = await callLatticeTool("edit_scene", {
             scene_id: sceneId,
             expected_updated_at: expectedUpdatedAt,
             cues,
@@ -1951,7 +1951,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/edit-scene", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/edit-scene", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -1970,7 +1970,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_revision", message: "日期、标题、正文或 Scene 版本不完整。" }));
             return;
           }
-          const result = await callSereinTool("edit_scene", {
+          const result = await callLatticeTool("edit_scene", {
             scene_id: sceneId,
             expected_updated_at: expectedUpdatedAt,
             title,
@@ -1988,7 +1988,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/set-scene-status", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/set-scene-status", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2011,7 +2011,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_status", message: "缺少 Scene 或版本信息。" }));
             return;
           }
-          const result = await callSereinTool("set_scene_status", {
+          const result = await callLatticeTool("set_scene_status", {
             scene_id: sceneId,
             expected_updated_at: expectedUpdatedAt,
             status,
@@ -2028,7 +2028,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/delete-scenes", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/delete-scenes", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2046,7 +2046,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_ids", message: "没有找到要删除的 Scene。" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/buckets/delete", {
+          const upstream = await callLatticeDashboard("/api/buckets/delete", {
             method: "POST",
             body: { bucket_ids: sceneIds, confirm: "DELETE" },
           });
@@ -2061,7 +2061,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/revision-materials", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/revision-materials", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") { response.statusCode = 405; response.end('{}'); return; }
         try {
@@ -2070,7 +2070,7 @@ function sereinMemoryBridge() {
           if (!/^[A-Za-z0-9_.:#-]{1,160}$/.test(proposalId)) throw new Error('invalid_proposal_id');
           const params = new URLSearchParams({ offset:String(Math.max(0, Number(body.offset) || 0)), limit:'50' });
           if (body.identifier) { params.set('identifier', String(body.identifier)); params.set('kind', String(body.kind || '')); }
-          const result = await callSereinDashboard(`/api/narrative-revision-inbox/${encodeURIComponent(proposalId)}/materials?${params}`);
+          const result = await callLatticeDashboard(`/api/narrative-revision-inbox/${encodeURIComponent(proposalId)}/materials?${params}`);
           response.statusCode = result.status;
           response.end(JSON.stringify(result.payload));
         } catch {
@@ -2079,7 +2079,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/narrative-revisions", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/narrative-revisions", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2092,7 +2092,7 @@ function sereinMemoryBridge() {
             ? body.status
             : "pending";
           const narrativeId = String(body.narrativeId || "").trim();
-          const result = await callSereinTool("narrative_revision_inbox", {
+          const result = await callLatticeTool("narrative_revision_inbox", {
             status,
             narrative_id: narrativeId,
             limit: Math.max(1, Math.min(Number(body.limit) || 50, 100)),
@@ -2108,7 +2108,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/review-narrative-revision", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/review-narrative-revision", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2124,7 +2124,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_revision_action", message: "修订动作不正确。" }));
             return;
           }
-          const result = await callSereinTool("review_narrative_revision", {
+          const result = await callLatticeTool("review_narrative_revision", {
             proposal_id: proposalId,
             action,
             draft_delta: String(body.draftDelta || ""),
@@ -2141,11 +2141,11 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/save-narrative-materials", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/save-narrative-materials", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") { response.statusCode = 405; response.end(); return; }
         try {
-          const result = await callSereinDashboard("/api/narrative-rolls/save-materials", {
+          const result = await callLatticeDashboard("/api/narrative-rolls/save-materials", {
             method: "POST", body: await readJsonBody(request),
           });
           response.statusCode = result.status;
@@ -2156,7 +2156,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/scene-edge-proposals", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/scene-edge-proposals", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2169,7 +2169,7 @@ function sereinMemoryBridge() {
           const status = allowedStatuses.includes(body.status) ? body.status : "pending";
           const limit = Math.max(1, Math.min(Number(body.limit) || 30, 100));
           const query = new URLSearchParams({ status, limit: String(limit), include_context: "true" });
-          const upstream = await callSereinDashboard(`/api/scene-edge-proposals?${query}`);
+          const upstream = await callLatticeDashboard(`/api/scene-edge-proposals?${query}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -2182,7 +2182,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/retry-scene-relation", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/retry-scene-relation", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2191,7 +2191,7 @@ function sereinMemoryBridge() {
         }
         try {
           const body = await readJsonBody(request);
-          const upstream = await callSereinDashboard("/api/scene-relation-jobs/retry", {
+          const upstream = await callLatticeDashboard("/api/scene-relation-jobs/retry", {
             method: "POST",
             body: { scene_id: body.scene_id, attempt_id: body.attempt_id },
           });
@@ -2203,7 +2203,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/review-scene-edge-proposal", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/review-scene-edge-proposal", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2219,7 +2219,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_relationship_action", message: "关系审核动作不正确。" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/scene-edge-proposals/review", {
+          const upstream = await callLatticeDashboard("/api/scene-edge-proposals/review", {
             method: "POST",
             body: {
               proposal_id: proposalId,
@@ -2239,7 +2239,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/create-scene-edge-proposal", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/create-scene-edge-proposal", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2256,7 +2256,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_edge_target", message: "需要两张不同的 Scene。" }));
             return;
           }
-          const upstream = await callSereinDashboard("/api/scene-edge-proposals/manual", {
+          const upstream = await callLatticeDashboard("/api/scene-edge-proposals/manual", {
             method: "POST",
             body: {
               source_scene_id: sourceSceneId,
@@ -2282,7 +2282,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/scene-edges", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/scene-edges", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2293,7 +2293,7 @@ function sereinMemoryBridge() {
           const body = await readJsonBody(request);
           const query = new URLSearchParams({ include_inactive: "true" });
           if (body.sceneId) query.set("scene_id", String(body.sceneId).trim());
-          const upstream = await callSereinDashboard(`/api/scene-edges?${query}`);
+          const upstream = await callLatticeDashboard(`/api/scene-edges?${query}`);
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
@@ -2306,7 +2306,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/delete-scene-edge", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/delete-scene-edge", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2323,7 +2323,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_edge_target", message: "关系边或 Scene ID 不正确。" }));
             return;
           }
-          const upstream = await callSereinDashboard(`/api/scene-edges/${encodeURIComponent(edgeId)}`, {
+          const upstream = await callLatticeDashboard(`/api/scene-edges/${encodeURIComponent(edgeId)}`, {
             method: "DELETE",
             body: {
               scene_id: sceneId,
@@ -2343,7 +2343,7 @@ function sereinMemoryBridge() {
         }
       });
 
-      server.middlewares.use("/__serein/memory/restore-scene-edge", async (request, response) => {
+      server.middlewares.use("/__lattice/memory/restore-scene-edge", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         if (request.method !== "POST") {
           response.statusCode = 405;
@@ -2359,7 +2359,7 @@ function sereinMemoryBridge() {
             response.end(JSON.stringify({ error: "invalid_scene_edge_target", message: "关系边 ID 不正确。" }));
             return;
           }
-          const upstream = await callSereinDashboard(`/api/scene-edges/${encodeURIComponent(edgeId)}/restore`, {
+          const upstream = await callLatticeDashboard(`/api/scene-edges/${encodeURIComponent(edgeId)}/restore`, {
             method: "POST",
             body: { confirm: "RESTORE_SCENE_EDGE" },
           });
@@ -2379,7 +2379,7 @@ function sereinMemoryBridge() {
 }
 
 export default defineConfig({
-  base: String(process.env.SEREIN_BASE_PATH || "/"),
+  base: String(process.env.LATTICE_BASE_PATH || "/"),
   build: {
     outDir: "dist/client",
     rollupOptions: {
@@ -2399,5 +2399,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react(), sereinGatewayBridge(), sereinMemoryBridge()],
+  plugins: [react(), latticeGatewayBridge(), latticeMemoryBridge()],
 });

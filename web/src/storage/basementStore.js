@@ -1,9 +1,9 @@
 import { canonicalDomainPolicies, semanticRouteSnapshot } from "../data/basement.js";
 import { initializePersonal, personalRows, savePersonal } from "./personalStore.js";
 
-const draftStorageKey = "serein.basement.semantic-route-draft.v1";
-const domainPolicyStorageKey = "serein.basement.domain-policy-draft.v1";
-export const recallObservationStorageKey = "serein.basement.recall-observation-review.v1";
+const draftStorageKey = "lattice.basement.semantic-route-draft.v1";
+const domainPolicyStorageKey = "lattice.basement.domain-policy-draft.v1";
+export const recallObservationStorageKey = "lattice.basement.recall-observation-review.v1";
 
 const cloneRoutes = (routes) => JSON.parse(JSON.stringify(routes));
 
@@ -93,7 +93,7 @@ async function readRouteDraftResponse(response) {
 }
 
 export async function readServerSemanticRouteDraft() {
-  const response = await fetch("/__serein/gateway/semantic-route-draft");
+  const response = await fetch("/__lattice/gateway/semantic-route-draft");
   return readRouteDraftResponse(response);
 }
 
@@ -115,7 +115,7 @@ export async function saveServerSemanticRouteDraft(
   baseDatasetVersion,
   expectedRevision = null,
 ) {
-  const response = await fetch("/__serein/gateway/semantic-route-draft", {
+  const response = await fetch("/__lattice/gateway/semantic-route-draft", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ routes: normalizeRoutes(routes), baseDatasetVersion, expectedRevision }),
@@ -124,7 +124,7 @@ export async function saveServerSemanticRouteDraft(
 }
 
 export async function clearServerSemanticRouteDraft() {
-  const response = await fetch("/__serein/gateway/semantic-route-draft", { method: "DELETE" });
+  const response = await fetch("/__lattice/gateway/semantic-route-draft", { method: "DELETE" });
   return readRouteDraftResponse(response);
 }
 
@@ -175,10 +175,10 @@ export async function saveRecallObservationReviews(reviews) {
     }
     const saved = Object.fromEntries(personalRows("recall_review").map(row => [row.key, row.value]));
     window.localStorage.setItem(recallObservationStorageKey, JSON.stringify(saved));
-    window.localStorage.removeItem("serein.personal.unsaved-reviews.v1");
+    window.localStorage.removeItem("lattice.personal.unsaved-reviews.v1");
     return saved;
   } catch (error) {
-    window.localStorage.setItem("serein.personal.unsaved-reviews.v1", JSON.stringify(reviews));
+    window.localStorage.setItem("lattice.personal.unsaved-reviews.v1", JSON.stringify(reviews));
     throw error;
   }
 }

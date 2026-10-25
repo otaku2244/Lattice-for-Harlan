@@ -144,11 +144,11 @@ export function DiaryPage() {
 
   useEffect(() => {
     const refreshUserIdentity = (event) => {
-      if (event.detail?.key !== "serein.awake.name.user") return;
+      if (event.detail?.key !== "lattice.awake.name.user") return;
       setDiaryUserIdentity(readDiaryUserIdentity());
     };
-    window.addEventListener("serein:preference-change", refreshUserIdentity);
-    return () => window.removeEventListener("serein:preference-change", refreshUserIdentity);
+    window.addEventListener("lattice:preference-change", refreshUserIdentity);
+    return () => window.removeEventListener("lattice:preference-change", refreshUserIdentity);
   }, []);
 
   useEffect(() => {
@@ -400,7 +400,7 @@ export function DiaryPage() {
 
   const deleteDiary = async () => {
     if (!selectedEntry || deletingEntryId) return;
-    const deletionDetail = selectedEntry.sourceKind === "serein-diary-live-readonly"
+    const deletionDetail = selectedEntry.sourceKind === "lattice-diary-live-readonly"
       ? "删除后，它会从日记和搜索里消失；系统会保留删除前的修订快照。"
       : "这篇只保存在当前浏览器，删除后无法从这里恢复。";
     const confirmed = window.confirm(

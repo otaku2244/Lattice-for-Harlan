@@ -4,11 +4,11 @@ import json
 from datetime import datetime, timedelta, timezone
 import pytest
 from test_public_features import settings, ingest, output_for, synthetic_runner, raw_archive
-from serein.core.store import Store
-from serein.deployment import save_settings
-from serein.extensions import pipeline as p
-from serein.extensions import pipeline_latest as latest
-from serein.extensions.pipeline_rules import normalize_event_track_message_output
+from lattice.core.store import Store
+from lattice.deployment import save_settings
+from lattice.extensions import pipeline as p
+from lattice.extensions import pipeline_latest as latest
+from lattice.extensions.pipeline_rules import normalize_event_track_message_output
 
 
 def curator_task(settings):
@@ -153,7 +153,7 @@ def test_curator_api_omission_retries_once_then_retains(settings, monkeypatch):
             curator_calls.append(payload)
             output['events'][0]['owned_unit_roots'].pop()
         return {'choices': [{'message': {'content': json.dumps(output)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     result = asyncio.run(p.advance(settings.database, include_recent=True))
     assert len(curator_calls) == 2
     assert 'missing_messages' in curator_calls[1]['messages'][1]['content']
@@ -291,7 +291,7 @@ def test_writer_api_unwraps_json_object_without_retry(settings, monkeypatch):
             ).fetchone()[0])
         wrapped = {'type': 'json_object', 'content': output_for('event_writer', request)}
         return {'choices': [{'message': {'content': json.dumps(wrapped)}}]}
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     assert asyncio.run(p.advance(settings.database, include_recent=True))['events'] == 1
     assert len(calls) == 1
 
@@ -498,8 +498,8 @@ def test_writer_insufficient_output_requires_review_object_but_not_true_checks()
 @pytest.mark.parametrize('accepted',[False,True])
 def test_old_pending_evidence_job_is_bypassed_and_history_preserved(settings,accepted):
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
-    from serein.core.store import encode
+    from lattice.api.http import create_app
+    from lattice.core.store import encode
     ingest(settings)
     task=curator_task(settings)
     p.submit(settings.database,task['job_id'],output_for(task['role'],task['request']))
@@ -542,7 +542,7 @@ def test_daytime_routing_does_not_create_events_or_consume_originals(settings,mo
             request=json.loads(store.conn.execute('SELECT request_json FROM pipeline_jobs WHERE output_json IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()[0])
         assert request['role']=='track_router'
         return {'choices':[{'message':{'content':json.dumps(output_for('track_router',request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     asyncio.run(p.flush_routes(settings.database))
     with Store(settings.database) as store:
         assert store.conn.execute('SELECT COUNT(*) FROM pipeline_routes').fetchone()[0]==10
@@ -561,7 +561,7 @@ def test_identity_rendering_never_rewrites_source_words(settings):
 
 
 def test_configured_names_are_literal_values_not_recursive_templates(settings):
-    from serein.semantic_setup import render_example
+    from lattice.semantic_setup import render_example
     names={'user_name':'Reader {ai_name}', 'ai_name':'Guide "A"'}
     template='{user_name} asks {ai_name}'
     expected='Reader {ai_name} asks Guide "A"'
@@ -593,11 +593,11 @@ def test_images_keep_ownership_and_only_curator_receives_pixels(settings,monkeyp
             assert request['curator_image_transcriptions'][0]['evidence_role']=='owned'
             assert isinstance(payload['messages'][1]['content'],str) and uri not in payload['messages'][1]['content']
         return {'choices':[{'message':{'content':json.dumps(output_for(request['role'],request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     assert asyncio.run(p.advance(settings.database,include_recent=True))['events']==1
 
 def test_curator_prompt_shows_complete_receipt_schema_and_safe_aliases(settings):
-    from serein.extensions.pipeline_audit import canonicalize_curator_review
+    from lattice.extensions.pipeline_audit import canonicalize_curator_review
     ingest(settings)
     task=curator_task(settings)
     prompt=task['request']['prompt']
@@ -614,7 +614,7 @@ def test_curator_prompt_shows_complete_receipt_schema_and_safe_aliases(settings)
 
 def test_image_transcription_defaults_only_deterministic_unreadable_flag():
     import hashlib
-    from serein.extensions.pipeline_images import bind_transcriptions, image_bytes
+    from lattice.extensions.pipeline_images import bind_transcriptions, image_bytes
     uri='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
     body,_=image_bytes(uri)
     receipt={'source_message_id':1,'position':1,'sha256':hashlib.sha256(body).hexdigest(),
@@ -644,7 +644,7 @@ def test_runtime_revision_retires_all_unfinished_frozen_statuses(settings):
 
 def test_transcribe_component_prefers_frozen_exact_receipt(settings,monkeypatch):
     import hashlib
-    from serein.extensions.pipeline_images import image_bytes
+    from lattice.extensions.pipeline_images import image_bytes
     uri='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
     body,_=image_bytes(uri)
     image={'source_message_id':1,'position':1,'sha256':hashlib.sha256(body).hexdigest(),
@@ -659,7 +659,7 @@ def test_transcribe_component_prefers_frozen_exact_receipt(settings,monkeypatch)
 
 
 def test_failed_image_budget_survives_new_batches_and_manual_retry(settings):
-    from serein.image_transcription import image_failures
+    from lattice.image_transcription import image_failures
     uri='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
     raw_archive(settings).ingest([
         {'source_event_id':'bad-u','session_id':'bad','role':'user','text':'Read this image','created_at':'2025-01-01T00:00:00Z',
@@ -689,12 +689,12 @@ def test_failed_image_budget_survives_new_batches_and_manual_retry(settings):
     assert asyncio.run(p.advance(settings.database,include_recent=True,runner=failing))['status']=='current'
     assert len(calls)==3
     from fastapi.testclient import TestClient
-    from serein.api.http import create_app
+    from lattice.api.http import create_app
     client=TestClient(create_app(settings,token='test',live=True),headers={'Authorization':'Bearer test'})
     assert client.get('/v1/pipeline/status').json()['failed_images'][0]['failures']==3
     unauthenticated=TestClient(create_app(settings,token='test',live=True))
     assert unauthenticated.post('/v1/pipeline/retry-image',json={'sha256':calls[0]}).status_code==401
-    from serein.work_tasks import enqueue, pause
+    from lattice.work_tasks import enqueue, pause
     enqueue(settings.database,'pipeline')
     assert client.post('/v1/pipeline/retry-image',json={'sha256':calls[0]}).json()['status']=='busy'
     assert image_failures(settings.database,calls[0])==3
@@ -712,7 +712,7 @@ def test_failed_image_budget_survives_new_batches_and_manual_retry(settings):
 
 
 def test_image_holds_keep_independent_proposals_and_shared_bridge_pending(settings):
-    from serein.image_transcription import apply_image_holds
+    from lattice.image_transcription import apply_image_holds
     p.initialize(settings.database)
     failed={'source_message_id':1,'position':1,'sha256':'a'*64,'status':'failed','failures':3}
     component={'messages':[{'id':1,'role':'user'},{'id':2,'role':'assistant'},
@@ -740,7 +740,7 @@ def test_image_holds_keep_independent_proposals_and_shared_bridge_pending(settin
 
 
 def test_image_failure_keeps_successful_sibling_receipt(settings):
-    from serein.image_transcription import reusable_transcriptions, image_failures
+    from lattice.image_transcription import reusable_transcriptions, image_failures
     uri='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
     import base64
     other='data:image/png;base64,'+base64.b64encode(base64.b64decode(uri.split(',')[1])+b'different bytes').decode()
@@ -768,7 +768,7 @@ def test_image_failure_keeps_successful_sibling_receipt(settings):
 
 
 def test_image_api_counts_each_failed_request_and_waiting_agent_does_not(settings,monkeypatch):
-    from serein.image_transcription import image_failures
+    from lattice.image_transcription import image_failures
     uri='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='
     raw_archive(settings).ingest([
         {'source_event_id':'api-u','session_id':'api','role':'user','text':'Image','created_at':'2025-01-01T00:00:00Z',
@@ -791,7 +791,7 @@ def test_image_api_counts_each_failed_request_and_waiting_agent_does_not(setting
             calls.append(1)
             raise TimeoutError('synthetic timeout')
         return {'choices':[{'message':{'content':json.dumps(output_for(request['role'],request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete',complete)
+    monkeypatch.setattr('lattice.model_runtime.complete',complete)
     result=asyncio.run(p.advance(settings.database,include_recent=True))
     assert len(calls)==3 and image_failures(settings.database,sha)==3
     assert result['events']==0 and result['deferred']==2
@@ -831,7 +831,7 @@ def test_router_request_sends_complete_role_rules_once(settings, monkeypatch, ap
                 "AND output_json IS NULL ORDER BY rowid DESC LIMIT 1").fetchone()[0])
         captured.append((request, payload))
         return {'choices': [{'message': {'content': json.dumps(output_for('track_router', request))}}]}
-    monkeypatch.setattr('serein.model_runtime.complete', complete)
+    monkeypatch.setattr('lattice.model_runtime.complete', complete)
     task = asyncio.run(p.advance(settings.database, include_recent=True))
     request = captured[0][0] if api_mode else task['request']
     with latest.identity_scope(request['identity']):

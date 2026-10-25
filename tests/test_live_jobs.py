@@ -6,13 +6,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from serein.compat.germany.scene_linker import SceneLinker
-from serein.compat.jobs import update_scene_jobs, scene_job_failures, retry_scene_job
-from serein.compat.scout import Scout
-from serein.compat.narratives import narrative_transaction, RevisionInbox
-from serein.compat.scenes import Scenes
-from serein.application import Application
-from serein.core.store import Store
+from lattice.compat.germany.scene_linker import SceneLinker
+from lattice.compat.jobs import update_scene_jobs, scene_job_failures, retry_scene_job
+from lattice.compat.scout import Scout
+from lattice.compat.narratives import narrative_transaction, RevisionInbox
+from lattice.compat.scenes import Scenes
+from lattice.application import Application
+from lattice.core.store import Store
 from test_live_clients import live
 from test_live_relations import seed
 from test_live_narratives import seed as seed_narrative
@@ -21,7 +21,7 @@ from test_live_narratives import seed as seed_narrative
 def test_scene_job_survives_failure_and_concurrent_edit(live):
     settings, client = live
     source, target, _ = seed(client)
-    linker = SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker = SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.handle_scene_content_changed = AsyncMock(return_value={'normal_relink_required':True})
     linker.link_scene = AsyncMock(return_value={'status':'failed'})
     assert asyncio.run(update_scene_jobs(settings,linker))['failed'] == 2
@@ -55,7 +55,7 @@ def test_scene_job_survives_failure_and_concurrent_edit(live):
 def test_scene_failure_blocks_restart_but_new_content_can_run(live,failure):
     settings,client=live
     source,target,_=seed(client)
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.handle_scene_content_changed=AsyncMock(return_value={'normal_relink_required':True})
     async def run(key,*args):
         if key==source:
@@ -68,7 +68,7 @@ def test_scene_failure_blocks_restart_but_new_content_can_run(live,failure):
         with pytest.raises(asyncio.CancelledError):asyncio.run(update_scene_jobs(settings,linker))
     else:asyncio.run(update_scene_jobs(settings,linker))
     # A fresh worker object still obeys the on-disk stop; other Scenes proceed.
-    restarted=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    restarted=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     restarted.handle_scene_content_changed=linker.handle_scene_content_changed
     restarted.link_scene=AsyncMock(return_value={'status':'no_edges'})
     asyncio.run(update_scene_jobs(settings,restarted))
@@ -91,10 +91,10 @@ def test_scene_failure_blocks_restart_but_new_content_can_run(live,failure):
 
 
 def test_scene_retry_endpoint_is_explicit_and_rejects_duplicate_requests(live):
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     settings,client=live
     source,target,_=seed(client)
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.handle_scene_content_changed=AsyncMock(return_value={'normal_relink_required':True})
     linker.link_scene=AsyncMock(return_value={'status':'failed','attempts':[{'status':'evidence_contract_failed'}]})
     asyncio.run(update_scene_jobs(settings,linker))
@@ -116,7 +116,7 @@ def test_blocked_scene_jobs_do_not_starve_later_scenes(live):
     with Store(settings.database) as store:
         for i in range(102):
             store.create(f'scene-{i:03}','scene','Synthetic','Synthetic content.')
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.handle_scene_content_changed=AsyncMock(return_value={'normal_relink_required':True})
     linker.link_scene=AsyncMock(return_value={'status':'failed'})
     asyncio.run(update_scene_jobs(settings,linker))
@@ -128,10 +128,10 @@ def test_blocked_scene_jobs_do_not_starve_later_scenes(live):
 
 
 def test_invalid_provider_response_is_called_only_once_per_scene(live):
-    from serein.compat.background import SceneReader
+    from lattice.compat.background import SceneReader
     settings,client=live
     source,target,_=seed(client)
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.providers=[{'name':'synthetic','model':'synthetic','client':object()}]
     linker.handle_scene_content_changed=AsyncMock(return_value={'normal_relink_required':True})
     reader=SceneReader(settings.database)
@@ -146,14 +146,14 @@ def test_invalid_provider_response_is_called_only_once_per_scene(live):
 
 @pytest.mark.parametrize('valid',[False,True])
 def test_scene_response_accepts_valid_edges_without_rejecting_whole_response(live,valid):
-    from serein.compat.background import SceneReader
+    from lattice.compat.background import SceneReader
     from test_live_relations import create
     settings,client=live
     source=create(client,'Synthetic A','A synthetic shared moment beside the window.')
     target=create(client,'Synthetic B','Another synthetic memory beside the window.')
     reader=SceneReader(settings.database)
     anchor=asyncio.run(reader.get(source));candidate=asyncio.run(reader.get(target))
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True,'min_confidence':0.99}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True,'min_confidence':0.99}})
     linker.providers=[{'name':'synthetic','model':'synthetic','client':object()}]
     linker._candidate_scenes=AsyncMock(return_value=[candidate])
     edge={'candidate_scene_id':target,'relation_type':'echoes','orientation':'symmetric','confidence':0.0,
@@ -180,7 +180,7 @@ def test_scene_response_accepts_valid_edges_without_rejecting_whole_response(liv
 def test_scene_worker_and_manual_retry_cannot_duplicate_inflight_request(live):
     settings,client=live
     source,target,_=seed(client)
-    linker=SceneLinker({'serein_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
+    linker=SceneLinker({'lattice_database':str(settings.database),'scene_linker':{'enabled':True,'auto_enabled':True}})
     linker.handle_scene_content_changed=AsyncMock(return_value={'normal_relink_required':True})
     async def check():
         started=asyncio.Event();release=asyncio.Event()
@@ -217,9 +217,9 @@ def test_scout_retains_scan_checkpoint_across_restart(live,tmp_path):
 
 
 def test_revision_background_starts_without_a_selected_model(live, monkeypatch):
-    from serein.application import Application
-    from serein import model_jobs
-    from serein.compat import jobs as background_jobs
+    from lattice.application import Application
+    from lattice import model_jobs
+    from lattice.compat import jobs as background_jobs
 
     settings, _ = live
     started = asyncio.Event()
@@ -243,7 +243,7 @@ def test_revision_background_starts_without_a_selected_model(live, monkeypatch):
 
 def test_promoted_event_leaves_revision_inbox_and_future_scout_materials(live):
     settings, client = live
-    from serein.deployment import save_settings
+    from lattice.deployment import save_settings
     save_settings(settings.database, {'features': {'event_to_scene': True}})
     event_id, _ = seed_narrative(client, settings)
     with narrative_transaction(settings.database, write=True) as rolls:
