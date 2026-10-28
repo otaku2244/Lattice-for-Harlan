@@ -106,13 +106,17 @@ def tools_for(settings):
 
         def memo_create(title: str, content: str, memo_id: str = '', session_id: str = '',
                         repeat_rule: str = 'every_n_rounds', next_due_at: str = '', interval_rounds: int = 6,
+                        weekday: int = 0, interval_weeks: int = 1, day_of_month: int = 0,
                         daily_limit: int | None = None, end_at: str = '', start_at: str = '',
                         cooldown_minutes: int = 0, max_injections: int = 0, channel: str = '') -> dict:
-            """Create an independent memo, not a memory or notification. Set start_at/end_at (UTC+8 dates or ISO times), repeat_rule (every_n_rounds/daily/morning_evening/once/none), daily_limit and max_injections. Default: every 6 rounds, at most once daily; morning_evening defaults to twice daily. Zero limits mean unlimited. Chat brings in at most two due memos; listing never consumes them. Reuse memo_id only for an identical retry."""
+            """Create an independent memo, not a memory or notification. Set start_at/end_at (UTC+8 dates or ISO times), repeat_rule (every_n_rounds/daily/morning_evening/weekly/monthly/once/none), daily_limit and max_injections. Default: every 6 rounds, at most once daily; morning_evening defaults to twice daily. Zero limits mean unlimited. Chat brings in at most two due memos; listing never consumes them. Reuse memo_id only for an identical retry.
+
+CRITICAL for weekly/monthly: repeat_rule='weekly' REQUIRES weekday (ISO 1=Monday .. 7=Sunday) plus optional interval_weeks (1=every week, 2=every other week counting from the week of start_at). repeat_rule='monthly' REQUIRES day_of_month (1-31; in short months it clamps to that month's last day, so 31 means Feb 28/29). The time of day is taken from start_at's time component; if start_at has no time it falls back to 09:00 Beijing time. If you pass repeat_rule='weekly' without weekday, or 'monthly' without day_of_month, the call fails."""
             values=dict(title=title.strip(),content=content.strip(),session_id=session_id,
                 channel=channel or ('session' if session_id else 'global'),repeat_rule=repeat_rule,
                 next_due_at=next_due_at,start_at=start_at,end_at=end_at,
                 interval_rounds=max(1,interval_rounds) if repeat_rule=='every_n_rounds' else 0,
+                weekday=weekday,interval_weeks=interval_weeks,day_of_month=day_of_month,
                 daily_limit=memos._normalize_daily_limit(daily_limit,repeat_rule),
                 cooldown_minutes=cooldown_minutes,max_injections=max_injections)
             if memo_id:
@@ -131,9 +135,11 @@ def tools_for(settings):
                         status: str | None = None, next_due_at: str | None = None,
                         start_at: str | None = None, end_at: str | None = None,
                         repeat_rule: str | None = None, interval_rounds: int | None = None,
+                        weekday: int | None = None, interval_weeks: int | None = None,
+                        day_of_month: int | None = None,
                         daily_limit: int | None = None, max_injections: int | None = None,
                         cooldown_minutes: int | None = None) -> dict:
-            """Edit memo content or schedule; complete with status=done, archive with archived. Omitted fields stay unchanged. Listing/injection is not completion of the underlying task."""
+            """Edit memo content or schedule; complete with status=done, archive with archived. Omitted fields stay unchanged. Listing/injection is not completion of the underlying task. Switching repeat_rule to weekly requires weekday (1=Monday..7=Sunday, plus optional interval_weeks); switching to monthly requires day_of_month (1-31, short months clamp to the last day). Switching away from every_n_rounds clears the round interval automatically, and switching back restores a sane default."""
             values={key:value for key,value in locals().items() if key not in {'memo_id','memos'} and value is not None}
             old=memos.get(memo_id)
             if old and daily_limit==old['daily_limit']:values.pop('daily_limit',None)
