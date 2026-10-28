@@ -13,8 +13,11 @@ class MemoEdit(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=12000)
-    repeat_rule: Literal['once','none','every_n_rounds','daily','morning_evening'] = 'every_n_rounds'
+    repeat_rule: Literal['once','none','every_n_rounds','daily','morning_evening','weekly','monthly'] = 'every_n_rounds'
     interval_rounds: int = Field(default=6, ge=0, le=10000)
+    weekday: int = Field(default=0, ge=0, le=7)
+    interval_weeks: int = Field(default=1, ge=1, le=52)
+    day_of_month: int = Field(default=0, ge=0, le=31)
     daily_limit: int | None = Field(default=None, ge=0, le=10000)
     start_at: str = ''
     end_at: str = ''
@@ -33,6 +36,10 @@ class MemoEdit(BaseModel):
     def valid_interval(self):
         if self.repeat_rule=='every_n_rounds' and self.interval_rounds<1:
             raise ValueError('Round interval must be at least one')
+        if self.repeat_rule=='weekly' and not 1<=self.weekday<=7:
+            raise ValueError('Weekly memos need a weekday between 1 (Monday) and 7 (Sunday)')
+        if self.repeat_rule=='monthly' and not 1<=self.day_of_month<=31:
+            raise ValueError('Monthly memos need a day_of_month between 1 and 31')
         return self
 
 

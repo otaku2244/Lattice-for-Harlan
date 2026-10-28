@@ -117,10 +117,23 @@ function MemoDateField({ label, value, onChange }) {
   </fieldset>;
 }
 
-const blankMemo = () => ({ title: "", content: "", repeat_rule: "every_n_rounds", interval_rounds: 6, daily_limit: "",
+const blankMemo = () => ({ title: "", content: "", repeat_rule: "every_n_rounds", interval_rounds: 6,
+  weekday: 1, interval_weeks: 1, day_of_month: 1, daily_limit: "",
   start_at: "", end_at: "", next_due_at: "", cooldown_minutes: 0, max_injections: 0, channel: "global", session_id: "" });
 const statusNames = { active: "进行中", done: "已完成", archived: "已归档" };
-const repeatNames = { every_n_rounds: "每隔几轮", daily: "每天", morning_evening: "早晚", once: "只提醒一次", none: "不重复" };
+const repeatNames = { every_n_rounds: "每隔几轮", daily: "每天", morning_evening: "早晚", weekly: "按周", monthly: "按月", once: "只提醒一次", none: "不重复" };
+const weekdayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+function repeatLabel(item) {
+  if (item.repeat_rule === "every_n_rounds") return `每 ${item.interval_rounds} 轮`;
+  if (item.repeat_rule === "weekly") {
+    const week = weekdayNames[(item.weekday || 1) - 1] || "周一";
+    const every = (item.interval_weeks || 1) > 1 ? `每 ${item.interval_weeks} 周 · ` : "每周 · ";
+    return every + week;
+  }
+  if (item.repeat_rule === "monthly") return `每月 ${item.day_of_month || 1} 号`;
+  return repeatNames[item.repeat_rule] || item.repeat_rule;
+}
 const numberFields = [["interval_rounds", "轮次间隔", 1, 10000], ["daily_limit", "每日上限", 0, 10000], ["max_injections", "总次数上限", 0, 100000], ["cooldown_minutes", "间隔分钟", 0, 525600]];
 export function MemosPage() {
   const [items, setItems] = useState([]), [enabled, setEnabled] = useState(null);
@@ -139,7 +152,11 @@ export function MemosPage() {
   }
   function edit(item) {
     setEditing(item?.id || "");
-    setDraft(item ? { ...Object.fromEntries(Object.entries(blankMemo()).map(([key, fallback]) => [key, item[key] ?? fallback])), interval_rounds: item.interval_rounds || 6 } : blankMemo());
+    setDraft(item ? { ...Object.fromEntries(Object.entries(blankMemo()).map(([key, fallback]) => [key, item[key] ?? fallback])),
+      interval_rounds: item.interval_rounds || 6,
+      weekday: item.weekday || 1,
+      interval_weeks: item.interval_weeks || 1,
+      day_of_month: item.day_of_month || 1 } : blankMemo());
     setMessage("");
   }
   function field(key, value) { setDraft(d => ({ ...d, [key]: value })); }
@@ -160,7 +177,16 @@ export function MemosPage() {
         <label className="companion-field memo-wide">正文<textarea required rows={4} maxLength={12000} value={draft.content} onChange={event => field("content", event.target.value)} /></label>
         {[['start_at', '开始'], ['end_at', '结束']].map(([key, label]) => <MemoDateField key={key} label={label} value={draft[key]} onChange={value => field(key, value)} />)}
         <label className="companion-field">重复<select value={draft.repeat_rule} onChange={event => field("repeat_rule", event.target.value)}>{Object.entries(repeatNames).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
-      </div><p className="companion-note">日期和时间按北京时间安排。只选日期也可以；到时随聊天提起。</p>
+        {draft.repeat_rule === "weekly" && <>
+          <label className="companion-field">星期几<select value={draft.weekday} onChange={event => field("weekday", Number(event.target.value))}>{weekdayNames.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></label>
+          <label className="companion-field">每几周<input type="number" min={1} max={52} required value={draft.interval_weeks} onChange={event => field("interval_weeks", Number(event.target.value) || 1)} /></label>
+        </>}
+        {draft.repeat_rule === "monthly" && <label className="companion-field">每月几号<input type="number" min={1} max={31} required value={draft.day_of_month} onChange={event => field("day_of_month", Number(event.target.value) || 1)} /></label>}
+      </div><p className="companion-note">
+        {draft.repeat_rule === "weekly" || draft.repeat_rule === "monthly"
+          ? "周期按北京时间的日期推算。提醒的具体时刻取自「开始」里填的时间；不填时间则默认早上 9:00。月末遇短月自动落到当月最后一天。"
+          : "日期和时间按北京时间安排。只选日期也可以；到时随聊天提起。"}
+      </p>
       <details className="memo-options"><summary>提醒次数与范围</summary><div className="memo-editor-grid">
         {numberFields.filter(([key]) => key !== "interval_rounds" || draft.repeat_rule === "every_n_rounds").map(([key, label, min, max]) => <label className="companion-field" key={key}>{label}<input type="number" min={min} max={max} required={key !== "daily_limit"} placeholder={key === "daily_limit" ? "自动" : "0 表示不限"} value={draft[key]} onChange={event => field(key, event.target.value === "" && key === "daily_limit" ? "" : Number(event.target.value))} /></label>)}
         <label className="companion-field">通道<input required value={draft.channel} onChange={event => field("channel", event.target.value)} /></label>
@@ -174,7 +200,7 @@ export function MemosPage() {
       <p className="memo-body">{item.content}</p>
       <div className="memo-meta"><span>{item.start_at ? `开始 ${formatTime(item.start_at)}` : "现在可用"}</span>
         {item.end_at && <span>到期 {formatTime(item.end_at)}</span>}
-        <span>{item.repeat_rule === "every_n_rounds" ? `每 ${item.interval_rounds} 轮` : repeatNames[item.repeat_rule]}</span><span>{item.daily_limit ? `每天最多 ${item.daily_limit} 次` : "不限每日次数"}</span>
+        <span>{repeatLabel(item)}</span><span>{item.daily_limit ? `每天最多 ${item.daily_limit} 次` : "不限每日次数"}</span>
         {item.max_injections > 0 && <span>总共最多 {item.max_injections} 次</span>}{item.cooldown_minutes > 0 && <span>至少间隔 {item.cooldown_minutes} 分钟</span>}<span>已提醒 {item.reminder_count} 次</span>
         {item.channel !== "global" && <span>通道 {item.channel}</span>}</div>
       <div className="companion-actions"><button type="button" disabled={busy} onClick={() => edit(item)}>编辑</button>

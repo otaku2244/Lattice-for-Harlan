@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import uuid
+import calendar
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -13,8 +14,11 @@ def now_iso():
 
 
 REMINDER_STATUSES = {"active", "done", "archived"}
-REMINDER_REPEAT_RULES = {"once", "none", "every_n_rounds", "daily", "morning_evening"}
+REMINDER_REPEAT_RULES = {"once", "none", "every_n_rounds", "daily", "morning_evening", "weekly", "monthly"}
 MORNING_EVENING_SLOTS = ((6, 0), (20, 0))
+# weekly / monthly 未显式指定时刻时，回落到这个时间，避免锚点随提醒时刻漂移
+DEFAULT_REPEAT_HOUR = 9
+DEFAULT_REPEAT_MINUTE = 0
 
 
 class ReminderStore:
@@ -48,6 +52,9 @@ class ReminderStore:
                 next_due_at TEXT,
                 repeat_rule TEXT NOT NULL DEFAULT 'every_n_rounds',
                 interval_rounds INTEGER NOT NULL DEFAULT 6,
+                weekday INTEGER NOT NULL DEFAULT 0,
+                interval_weeks INTEGER NOT NULL DEFAULT 1,
+                day_of_month INTEGER NOT NULL DEFAULT 0,
                 cooldown_minutes INTEGER NOT NULL DEFAULT 0,
                 daily_limit INTEGER NOT NULL DEFAULT 1,
                 daily_reminder_date TEXT NOT NULL DEFAULT '',
@@ -70,6 +77,11 @@ class ReminderStore:
                 "daily_reminder_date": "TEXT NOT NULL DEFAULT ''",
                 "daily_reminder_count": "INTEGER NOT NULL DEFAULT 0",
                 "max_injections": "INTEGER NOT NULL DEFAULT 0",
+                # 周/月周期的日历锚点：weekday 用 ISO 1-7（周一=1），0 表示未指定；
+                # interval_weeks 为间隔周数；day_of_month 为每月几号，0 表示未指定。
+                "weekday": "INTEGER NOT NULL DEFAULT 0",
+                "interval_weeks": "INTEGER NOT NULL DEFAULT 1",
+                "day_of_month": "INTEGER NOT NULL DEFAULT 0",
             },
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_status_due ON reminders(status, next_due_at)")
@@ -100,6 +112,9 @@ class ReminderStore:
         next_due_at: str = "",
         repeat_rule: str = "every_n_rounds",
         interval_rounds: int = 6,
+        weekday: int = 0,
+        interval_weeks: int = 1,
+        day_of_month: int = 0,
         cooldown_minutes: int = 0,
         daily_limit: int | None = None,
         max_injections: int = 0,
@@ -117,7 +132,15 @@ class ReminderStore:
         if repeat == "every_n_rounds":
             interval = max(1, interval)
         else:
-            interval = max(0, interval)
+            interval = 0
+
+        safe_weekday = self._normalize_weekday(weekday)
+        safe_interval_weeks = max(1, min(52, self._safe_int(interval_weeks, 1)))
+        safe_day_of_month = self._normalize_day_of_month(day_of_month)
+        if repeat == "weekly" and safe_weekday == 0:
+            raise ValueError("weekly reminders require weekday 1-7")
+        if repeat == "monthly" and safe_day_of_month == 0:
+            raise ValueError("monthly reminders require day_of_month 1-31")
 
         item_id = str(reminder_id or "").strip() or uuid.uuid4().hex[:16]
         now = now_iso()
@@ -134,12 +157,26 @@ class ReminderStore:
             "next_due_at": self._validate_optional_time(next_due_at),
             "repeat_rule": repeat,
             "interval_rounds": interval,
+            "weekday": safe_weekday,
+            "interval_weeks": safe_interval_weeks,
+            "day_of_month": safe_day_of_month,
             "cooldown_minutes": max(0, self._safe_int(cooldown_minutes, 0)),
             "daily_limit": self._normalize_daily_limit(daily_limit, repeat),
             "max_injections": max(0, self._safe_int(max_injections, 0)),
             "created_at": now,
             "updated_at": now,
         }
+        # 日历型规则若没指定首个到期时刻，这里就排好，避免刚建好立刻弹出来
+        if not values["next_due_at"] and repeat in {"daily", "weekly", "monthly", "morning_evening"}:
+            base = datetime.now(LOCAL_TZ)
+            start_raw = values["start_at"]
+            start_dt = self._parse_time(start_raw, now=base, end_of_day=False)
+            if start_dt and not self._is_date_only(start_raw) and start_dt > base:
+                values["next_due_at"] = start_dt.isoformat(timespec="seconds")
+            else:
+                nxt = self._compute_next_due(values, base)
+                if nxt:
+                    values["next_due_at"] = nxt.isoformat(timespec="seconds")
         conn = self._connect()
         try:
             with conn:
@@ -148,11 +185,13 @@ class ReminderStore:
                     INSERT INTO reminders (
                         id, title, content, status, source, channel, session_id,
                         start_at, end_at, next_due_at, repeat_rule, interval_rounds,
+                        weekday, interval_weeks, day_of_month,
                         cooldown_minutes, daily_limit, max_injections, created_at, updated_at
                     )
                     VALUES (
                         :id, :title, :content, :status, :source, :channel, :session_id,
                         :start_at, :end_at, :next_due_at, :repeat_rule, :interval_rounds,
+                        :weekday, :interval_weeks, :day_of_month,
                         :cooldown_minutes, :daily_limit, :max_injections, :created_at, :updated_at
                     )
                     """,
@@ -264,6 +303,9 @@ class ReminderStore:
         next_due_at: str | None = None,
         repeat_rule: str | None = None,
         interval_rounds: int | None = None,
+        weekday: int | None = None,
+        interval_weeks: int | None = None,
+        day_of_month: int | None = None,
         cooldown_minutes: int | None = None,
         daily_limit: int | None = None,
         max_injections: int | None = None,
@@ -300,8 +342,20 @@ class ReminderStore:
             updates["next_due_at"] = self._validate_optional_time(next_due_at)
         if repeat_rule is not None:
             updates["repeat_rule"] = self._normalize_repeat_rule(repeat_rule)
+        if weekday is not None:
+            updates["weekday"] = self._normalize_weekday(weekday)
+        if interval_weeks is not None:
+            updates["interval_weeks"] = max(1, min(52, self._safe_int(interval_weeks, 1)))
+        if day_of_month is not None:
+            updates["day_of_month"] = self._normalize_day_of_month(day_of_month)
         if interval_rounds is not None:
             updates["interval_rounds"] = max(0, self._safe_int(interval_rounds, 0))
+        # 重复规则改成非轮次型时，轮次间隔必须归零，否则会被旧的轮次条件挡住
+        effective_rule = updates.get("repeat_rule") or self._normalize_repeat_rule(current.get("repeat_rule"))
+        if effective_rule != "every_n_rounds" and "interval_rounds" not in updates:
+            updates["interval_rounds"] = 0
+        if effective_rule == "every_n_rounds" and int(updates.get("interval_rounds", current.get("interval_rounds") or 0) or 0) < 1:
+            updates["interval_rounds"] = 1
         if cooldown_minutes is not None:
             updates["cooldown_minutes"] = max(0, self._safe_int(cooldown_minutes, 0))
         if daily_limit is not None:
@@ -469,16 +523,27 @@ class ReminderStore:
         return bool(end_at and next_due_dt and next_due_dt > end_at)
 
     def _next_due_after_reminder(self, item: dict, reminded_at: str) -> str:
-        repeat_rule = self._normalize_repeat_rule(item.get("repeat_rule"))
-        if repeat_rule == "daily":
-            base = self._coerce_now(reminded_at)
-            return self._next_daily_due(item, base).isoformat(timespec="seconds")
-        if repeat_rule == "morning_evening":
-            base = self._coerce_now(reminded_at)
-            return self._next_morning_evening_due(base).isoformat(timespec="seconds")
-        if repeat_rule in {"once", "none"}:
-            return ""
-        return str(item.get("next_due_at") or "")
+        base = self._coerce_now(reminded_at)
+        nxt = self._compute_next_due(item, base)
+        if nxt is None:
+            repeat_rule = self._normalize_repeat_rule(item.get("repeat_rule"))
+            if repeat_rule in {"once", "none"}:
+                return ""
+            return str(item.get("next_due_at") or "")
+        return nxt.isoformat(timespec="seconds")
+
+    def _compute_next_due(self, item: dict, base: datetime) -> datetime | None:
+        """按重复规则算出 base 之后的下一个到期时刻；轮次型与一次性返回 None。"""
+        rule = self._normalize_repeat_rule(item.get("repeat_rule"))
+        if rule == "daily":
+            return self._next_daily_due(item, base)
+        if rule == "morning_evening":
+            return self._next_morning_evening_due(base)
+        if rule == "weekly":
+            return self._next_weekly_due(item, base)
+        if rule == "monthly":
+            return self._next_monthly_due(item, base)
+        return None
 
     def _next_daily_due(self, item: dict, base: datetime) -> datetime:
         anchor = self._time_anchor(item, base)
@@ -492,6 +557,73 @@ class ReminderStore:
             candidate += timedelta(days=1)
         return candidate
 
+    def _next_weekly_due(self, item: dict, base: datetime) -> datetime:
+        """按 weekday（ISO 1-7）触发，interval_weeks 控制间隔周数。
+
+        基准周取 start_at 所在周；没有 start_at 时取 created_at 所在周。
+        基准周算第 0 周，之后每逢 interval_weeks 的整数倍触发。
+        """
+        weekday = self._normalize_weekday(item.get("weekday"))
+        if weekday == 0:
+            weekday = base.isoweekday()
+        anchor = self._time_anchor(item, base, allow_created=False)
+        interval_weeks = max(1, min(52, self._safe_int(item.get("interval_weeks"), 1)))
+
+        week_start = base.date() - timedelta(days=base.isoweekday() - 1)
+        target_date = week_start + timedelta(days=weekday - 1)
+        candidate = datetime(
+            target_date.year, target_date.month, target_date.day,
+            anchor.hour, anchor.minute, anchor.second, tzinfo=base.tzinfo,
+        )
+        if candidate <= base:
+            candidate += timedelta(days=7)
+
+        if interval_weeks > 1:
+            ref_week = self._week_reference(item, base)
+            # 最多向前找 interval_weeks 周，必然命中一个整数倍周
+            for _ in range(interval_weeks):
+                weeks_diff = (candidate.date() - ref_week).days // 7
+                if weeks_diff % interval_weeks == 0:
+                    break
+                candidate += timedelta(days=7)
+        return candidate
+
+    def _next_monthly_due(self, item: dict, base: datetime) -> datetime:
+        """按 day_of_month 触发。短月自动对齐全月最后一天（31 号在 2 月取 28/29）。"""
+        day = self._normalize_day_of_month(item.get("day_of_month"))
+        if day == 0:
+            day = base.day
+        anchor = self._time_anchor(item, base, allow_created=False)
+
+        year, month = base.year, base.month
+        for _ in range(2):
+            last = calendar.monthrange(year, month)[1]
+            candidate = datetime(
+                year, month, min(day, last),
+                anchor.hour, anchor.minute, anchor.second, tzinfo=base.tzinfo,
+            )
+            if candidate > base:
+                return candidate
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+        # 兜底：再往后一个月
+        last = calendar.monthrange(year, month)[1]
+        return datetime(year, month, min(day, last),
+                        anchor.hour, anchor.minute, anchor.second, tzinfo=base.tzinfo)
+
+    def _week_reference(self, item: dict, base: datetime) -> 'date':
+        """周间隔的基准周起点（周一）。优先 start_at，其次 created_at，最后用 base 所在周。"""
+        for key in ("start_at", "created_at"):
+            raw = str(item.get(key) or "").strip()
+            if not raw:
+                continue
+            parsed = self._parse_time(raw, now=base, end_of_day=False)
+            if parsed:
+                return parsed.date() - timedelta(days=parsed.isoweekday() - 1)
+        return base.date() - timedelta(days=base.isoweekday() - 1)
+
     @staticmethod
     def _next_morning_evening_due(base: datetime) -> datetime:
         for hour, minute in MORNING_EVENING_SLOTS:
@@ -501,15 +633,34 @@ class ReminderStore:
         hour, minute = MORNING_EVENING_SLOTS[0]
         return (base + timedelta(days=1)).replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-    def _time_anchor(self, item: dict, base: datetime) -> datetime:
-        for key in ("next_due_at", "start_at"):
+    def _time_anchor(self, item: dict, base: datetime, *, allow_created: bool = True) -> datetime:
+        """固定时刻锚点，避免按日后重算时把时刻漂移到提醒发生的时刻。
+
+        顺序：start_at 的时分 → next_due_at 的时分 →（可选）created_at 的时分 → 默认 09:00。
+        纯日期值跳过，因为它没有时分信息。周/月规则不取 created_at，
+        因为创建时刻是随手点下的，不该成为固定提醒时刻。
+        """
+        keys = ("start_at", "next_due_at", "created_at") if allow_created else ("start_at", "next_due_at")
+        for key in keys:
             raw = str(item.get(key) or "").strip()
             if not raw or self._is_date_only(raw):
                 continue
             parsed = self._parse_time(raw, now=base, end_of_day=False)
             if parsed:
                 return parsed
-        return base
+        return base.replace(
+            hour=DEFAULT_REPEAT_HOUR, minute=DEFAULT_REPEAT_MINUTE, second=0, microsecond=0
+        )
+
+    @staticmethod
+    def _normalize_weekday(value: Any) -> int:
+        weekday = ReminderStore._safe_int(value, 0)
+        return weekday if 1 <= weekday <= 7 else 0
+
+    @staticmethod
+    def _normalize_day_of_month(value: Any) -> int:
+        day = ReminderStore._safe_int(value, 0)
+        return day if 1 <= day <= 31 else 0
 
     @staticmethod
     def _normalize_repeat_rule(value: Any) -> str:
@@ -588,6 +739,9 @@ class ReminderStore:
             "next_due_at": row["next_due_at"] or "",
             "repeat_rule": row["repeat_rule"],
             "interval_rounds": row["interval_rounds"],
+            "weekday": row["weekday"] if "weekday" in row.keys() else 0,
+            "interval_weeks": row["interval_weeks"] if "interval_weeks" in row.keys() else 1,
+            "day_of_month": row["day_of_month"] if "day_of_month" in row.keys() else 0,
             "cooldown_minutes": row["cooldown_minutes"],
             "daily_limit": row["daily_limit"],
             "daily_reminder_date": row["daily_reminder_date"] or "",
