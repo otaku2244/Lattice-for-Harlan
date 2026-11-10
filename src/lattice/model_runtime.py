@@ -44,16 +44,47 @@ def safe_upstream_http_error(response):
 
 
 def non_thinking_options(model):
-    """Disable reasoning only through provider/model controls known to support it."""
+    """Disable reasoning with the switch each provider actually honours.
+
+    关闭思考的字段各家不同，同一字段在有的转发层上语义还会相反，所以这里按
+    厂商分别映射，未知厂商一律不发字段——让上游走默认，避免误触发思考。
+
+    - DeepSeek（openai 协议）：thinking={'type':'disabled'}
+    - DeepSeek（anthropic 协议）：reasoning={'effort':'none'}
+    - SiliconFlow：enable_thinking=False
+    - agnes（apihub.agnes-ai.com）：reasoning_effort='none'
+      实测该转发层上 thinking / enable_thinking 任字段出现都会把思考打开，
+      只有 reasoning_effort='none' 能把思考真正关掉。
+    """
     base_url = str(model.get('base_url') or '')
     host = (urlsplit(base_url).hostname or '').lower()
     name = str(model.get('model') or '').lower()
+    protocol = str(model.get('protocol') or 'openai')
     deepseek = 'deepseek' in host or 'deepseek' in name
-    if str(model.get('protocol') or 'openai') == 'anthropic':
-        return {'reasoning': {'effort': 'none'}} if deepseek else {}
-    if 'siliconflow.' in host:
+    if deepseek:
+        if protocol == 'anthropic':
+            return {'reasoning': {'effort': 'none'}}
+        return {'thinking': {'type': 'disabled'}}
+    if 'siliconflow' in host:
         return {'enable_thinking': False}
-    return {'thinking': {'type': 'disabled'}} if deepseek else {}
+    if 'agnes' in host or name.startswith('agnes'):
+        return {'reasoning_effort': 'none'}
+    return {}
+
+
+def normalize_thinking_payload(model, payload):
+    """Translate a caller's generic thinking switch into the provider's own field.
+
+    Retained callers (dream engine and friends) submit {'thinking': {'type': 'disabled'}}.
+    That field is only understood by DeepSeek; on relays such as agnes it turns
+    reasoning on instead, which then eats the shared max_tokens budget and cuts
+    the answer mid-sentence. Never forward the generic field to a provider that
+    was not proven to accept it.
+    """
+    generic = payload.pop('thinking', None)
+    if isinstance(generic, dict):
+        payload.update(non_thinking_options(model))
+    return payload
 
 
 def deepseek_tool_reasoning_compat(model, payload, *, window_id=''):
@@ -206,11 +237,14 @@ class TaskClient:
         extra = payload.pop('extra_body', None)
         if extra:
             payload.update(extra)
+        # 所有任务统一走一次厂商映射：调用方塞进来的通用 thinking 开关会被翻译成
+        # 该厂商真正认的字段，未知厂商则丢弃，不再原样透传。
+        payload = normalize_thinking_payload(model, payload)
         if self.task == 'persona':
             # The retained Persona engine carries a legacy generic thinking
             # option. Replace it with only the control supported by this
             # provider; unknown providers receive no private reasoning fields.
-            for key in ('thinking','reasoning','enable_thinking'):
+            for key in ('thinking','reasoning','enable_thinking','reasoning_effort'):
                 payload.pop(key,None)
             payload.update(non_thinking_options(model))
         import asyncio

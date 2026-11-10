@@ -370,9 +370,15 @@ class DreamEngine:
             raise RuntimeError('dream model api key is not configured')
         options = {'model': self.model, 'messages': [{'role': 'system', 'content': self._dream_prompt()}, {'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}], 'max_tokens': self.max_tokens, 'temperature': self.temperature}
         if self.thinking_mode:
+            # 这里只表达「这一任务不需要思考」的意图；具体字段由 TaskClient 按厂商
+            # 翻译（见 non_thinking_options）。不同厂商关闭开关不同，不能通用。
             options['extra_body'] = {'thinking': {'type': self.thinking_mode}}
         response = await self.client.chat.completions.create(**options)
-        raw = response.choices[0].message.content if response.choices else ''
+        choice = response.choices[0] if getattr(response, 'choices', None) else None
+        if choice is not None and str(getattr(choice, 'finish_reason', '') or '') == 'length':
+            # 输出被 max_tokens 截断时正文会断在半句，日志留痕便于回溯。
+            logger.warning('dream generation hit max_tokens=%s, body may be cut mid-sentence', self.max_tokens)
+        raw = choice.message.content if choice else ''
         cleaned = (raw or '').strip()
         if cleaned.startswith('```'):
             cleaned = cleaned.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
