@@ -221,10 +221,14 @@ class PipelinePatch(BaseModel):
     track_candidates_enabled: bool | None = Field(default=None,strict=True)
     track_direct_hours: Literal[12,24,48,72] | None = None
     track_candidate_limit: int | None = Field(default=None,ge=1,le=50,strict=True)
+    router_compact_cards: bool | None = Field(default=None,strict=True)
     joint_review_enabled: bool | None = None
     material_review_enabled: bool | None = None
     round_gate_enabled: bool | None = None
     append_protected_enabled: bool | None = None
+    # 本地保留摘要优先为可选开关（默认关闭），不随公共版强制开启。
+    curator_summary_first: bool | None = Field(default=None,strict=True)
+    event_history_enabled: bool | None = Field(default=None,strict=True)
 
 
 class RecallPatch(BaseModel):
@@ -235,9 +239,13 @@ class RecallPatch(BaseModel):
     direct_pool_limit: int | None = Field(default=None, ge=6, le=100, strict=True)
     passages_enabled: bool | None = Field(default=None, strict=True)
     passage_min_chars: int | None = Field(default=None, ge=1, le=100000, strict=True)
+    embedding_batch_size: int | None = Field(default=None, ge=1, le=64, strict=True)
+    embedding_concurrency: int | None = Field(default=None, ge=1, le=4, strict=True)
+    index_catch_up: bool | None = Field(default=None, strict=True)
 
     @field_validator('direct_threshold', 'body_candidate_threshold', 'cue_candidate_threshold',
-                     'direct_pool_limit', 'passages_enabled', 'passage_min_chars', mode='before')
+                     'direct_pool_limit', 'passages_enabled', 'passage_min_chars',
+                     'embedding_batch_size', 'embedding_concurrency', 'index_catch_up', mode='before')
     @classmethod
     def reject_null(cls, value):
         if value is None: raise ValueError('Recall settings cannot be null')
@@ -430,7 +438,8 @@ def routes(settings, auth):
         policy=RecallPolicy.from_config(recall_settings(settings))
         return {**read_settings(settings.database, public=True), 'recall':{key:getattr(policy,key) for key in
                 ('direct_threshold','body_candidate_threshold','cue_candidate_threshold',
-                 'direct_pool_limit','passages_enabled','passage_min_chars')},
+                 'direct_pool_limit','passages_enabled','passage_min_chars',
+                 'embedding_batch_size','embedding_concurrency','index_catch_up')},
                 'memory_ready': status['ready'], 'memory_status':status,
                 'index_status':index_status(settings.database)}
 

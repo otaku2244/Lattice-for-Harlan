@@ -133,11 +133,6 @@
     {
       "route": "recall_needed",
       "action": "recall",
-      "text": "那份读书会安排，上次定在几楼？"
-    },
-    {
-      "route": "recall_needed",
-      "action": "recall",
       "text": "我们之前给练习项目取的名字是什么？"
     },
     {

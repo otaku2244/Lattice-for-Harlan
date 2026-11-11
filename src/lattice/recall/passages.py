@@ -98,7 +98,7 @@ def prepare_passages(settings, *, legacy=None, document_ids=None, client=None):
             grouped.setdefault(row['owner_id'], []).append(row)
     if document_ids is None:
         with Reader(settings.database) as reader:
-            document_ids=[row[0] for row in reader.store.conn.execute("SELECT id FROM documents WHERE kind IN ('event','scene')")]
+            document_ids=[row[0] for row in reader.store.conn.execute("SELECT id FROM documents WHERE kind IN ('event','scene') AND lifecycle='active'")]
     document_ids=set(document_ids)
     refresh_index(settings.database,settings.index,document_ids)
     with Search(settings.database, settings.index) as search, closing(open_layouts(settings.database)) as layouts, layouts:

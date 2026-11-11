@@ -17,7 +17,7 @@ from .scene import evidence_text
 def coverage(database, index):
     counts = {kind: Counter() for kind in ("event", "scene")}
     with Search(database, index) as search:
-        for row in search.reader.store.conn.execute("SELECT id,kind FROM documents WHERE kind IN ('event','scene') AND lifecycle!='deleted'"):
+        for row in search.reader.store.conn.execute("SELECT id,kind FROM documents WHERE kind IN ('event','scene') AND lifecycle='active'"):
             obj = search.reader.read(row["id"], with_evidence=False)
             if not obj["readable"]:
                 continue
@@ -51,7 +51,7 @@ def fill_vectors(settings, *, batch_size=None, concurrency=None, limit=None, cli
     if document_ids is None:
         with Search(settings.database, settings.index) as search:
             document_ids = [row[0] for row in search.reader.store.conn.execute(
-                "SELECT id FROM documents WHERE kind IN ('event','scene')")]
+                "SELECT id FROM documents WHERE kind IN ('event','scene') AND lifecycle='active'")]
     document_ids = set(document_ids)
     refresh_index(settings.database, settings.index, document_ids)
     pending, skipped = [], Counter()

@@ -23,3 +23,5 @@ deploy/venv/
 deploy/installation.json
 deploy/update-state.json
 deploy/connection-guide.txt
+backups/
+deploy/update-state.json.before-*

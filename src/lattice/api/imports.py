@@ -68,6 +68,16 @@ def routes(settings,auth):
     @router.get('/v1/pipeline/status')
     def pipeline_status():
         value=status(settings.database,'pipeline')
+        from ..extensions.pipeline_pending import initialize as initialize_pending,retain_legacy_batches
+        with Store(settings.database) as store,store.transaction(immediate=True):
+            initialize_pending(store.conn)
+            if value['status'] not in ('queued','running') and store.conn.execute("SELECT 1 FROM sqlite_master WHERE name='pipeline_batches'").fetchone():
+                retain_legacy_batches(store.conn)
+                job_id=value.get('job_id') or (value.get('result') or {}).get('job_id')
+                if job_id and value['status'] in ('awaiting_agent','interrupted'):
+                    job=store.conn.execute('SELECT b.status FROM pipeline_jobs j JOIN pipeline_batches b ON b.id=j.batch_id WHERE j.id=?',(job_id,)).fetchone()
+                    if job and job['status'] not in ('pending','routing_only'):
+                        value.update(status='idle',stage='idle',job_id='',result=None)
         from ..deployment import read_settings, configured_models
         config=read_settings(settings.database)
         value['execution_mode']=config['pipeline']['execution_mode']
@@ -108,6 +118,11 @@ def routes(settings,auth):
                 (value.get('job_id',''),))] if store.conn.execute("SELECT 1 FROM sqlite_master WHERE name='pipeline_attempts'").fetchone() else []
         if value.get('blocked_scopes') and value['status'] in ('idle','completed'):
             value.update(status='blocked',stage='blocked')
+        from ..extensions.pipeline_pending import entries,recover_runs,initialize as initialize_pending
+        with Store(settings.database) as store:
+            initialize_pending(store.conn)
+            recover_runs(store.conn,value['status'])
+            value['pending_materials']=entries(store.conn) if store.conn.execute("SELECT 1 FROM sqlite_master WHERE name='pipeline_batches'").fetchone() else []
         return value
 
     @router.post('/v1/pipeline/retry-batch')
@@ -116,6 +131,35 @@ def routes(settings,auth):
         from ..extensions.pipeline import retry_batch
         async def retry():return retry_batch(settings.database,body.get('batch_id'))
         return await execute(settings.database,'pipeline',retry)
+
+    @router.get('/v1/pipeline/pending/{pending_id}')
+    def pipeline_pending_detail(pending_id:int):
+        from ..extensions.pipeline_pending import detail
+        return detail(settings.database,pending_id)
+
+    @router.post('/v1/pipeline/resume-pending')
+    async def pipeline_resume_pending(body:dict):
+        from ..extensions.pipeline_pending import resume
+        from ..work_tasks import execute
+        pending_id=body.get('pending_id');replan=body.get('replan',False)
+        if type(pending_id) is not int or type(replan) is not bool:raise ValueError('待办编号与重新切分选项无效')
+        async def operation():return resume(settings.database,pending_id,replan=replan)
+        return await execute(settings.database,'pipeline',operation)
+
+    @router.post('/v1/pipeline/recovery-preview')
+    def pipeline_recovery_preview(body:dict):
+        from ..extensions.pipeline_recovery import recovery_preview
+        return recovery_preview(settings.database,body.get('batch_id'),body.get('max_input_chars'))
+
+    @router.post('/v1/pipeline/skip-batch')
+    async def pipeline_skip_batch(body:dict):
+        from ..extensions.pipeline_recovery import recover_batch
+        return await recover_batch(settings.database,body.get('batch_id'),'skip',body.get('confirm'))
+
+    @router.post('/v1/pipeline/rebatch')
+    async def pipeline_rebatch(body:dict):
+        from ..extensions.pipeline_recovery import recover_batch
+        return await recover_batch(settings.database,body.get('batch_id'),'rebatch',body.get('confirm'),body.get('max_input_chars'))
 
     @router.post('/v1/pipeline/restore-auto-boundary')
     async def restore_pipeline_auto_boundary(body:dict):

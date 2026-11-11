@@ -253,6 +253,16 @@ export function narrativeBodyDiff(currentBody, proposedBody) {
   ].join("\n");
 }
 
+// 模型端的状态码要翻译成具体原因。以前 401/429/400 全被压成同一个码，
+// 使用者只能看到「上游请求失败」，分不出是密钥失效、额度不足还是模型不支持。
+export function writerFailureCode(status) {
+  if (status === 504) return "narrative_writer_timeout";
+  if (status === 401 || status === 403) return "narrative_writer_auth_failed";
+  if (status === 429) return "narrative_writer_rate_limited";
+  if (status === 400 || status === 404 || status === 422) return "narrative_writer_model_unavailable";
+  return "narrative_writer_upstream_unavailable";
+}
+
 // The configured runner accepts one JSON object on stdin and returns the result
 // schema on stdout. It owns provider credentials; Lattice never selects a chat window.
 export async function runNarrativeCodexTask({mode,title,writingFocus = "",currentBody,materials,roleDir}, {backend = callLatticeBackend, signal} = {}) {
@@ -274,7 +284,7 @@ export async function runNarrativeCodexTask({mode,title,writingFocus = "",curren
     prompt, materials, output_schema:JSON.parse(readFileSync(join(roleDir,"output.schema.json"),"utf8"))};
   const raw = useUpstream ? await (async () => {
     const result = await backend("/v1/models/writer", {method:"POST",body:task,signal}, {timeout:310_000});
-    if (!result.ok) throw new Error(result.status === 504 ? "narrative_writer_timeout" : "narrative_upstream_failed");
+    if (!result.ok) throw new Error(result.payload?.reason || writerFailureCode(result.status));
     return result.payload.result;
   })() : await new Promise((resolveResult,reject) => {
     const child=spawn(command[0],command.slice(1),{stdio:["pipe","pipe","pipe"],windowsHide:true,signal});

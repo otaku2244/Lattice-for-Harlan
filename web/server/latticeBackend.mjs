@@ -3,6 +3,12 @@ export function latticeConfigured(env = process.env) {
   return Boolean(String(env.LATTICE_MEMORY_URL || "").trim());
 }
 
+// AbortSignal.timeout() 中止时抛的是 TimeoutError，不是 AbortError；
+// 只有 AbortController.abort() 才给 AbortError。两者都算超时。
+export function latticeBackendTimedOut(error) {
+  return error?.name === "TimeoutError" || error?.name === "AbortError";
+}
+
 export async function callLatticeBackend(path, { method = "GET", body, timeoutMs, signal } = {}, { env = process.env, fetchImpl = fetch, timeout = 30_000 } = {}) {
   const base = String(env.LATTICE_MEMORY_URL || "").trim().replace(/\/$/, "");
   const token = String(env.LATTICE_MEMORY_TOKEN || "").trim();

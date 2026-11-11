@@ -12,6 +12,14 @@ services:
       - ./secrets:/secrets:ro
       - ./runtime:/data
       - ${LATTICE_LEGACY_SOURCE:-./runtime/legacy-input}:/legacy/input:ro
+      - ../src/lattice/resources:/usr/local/lib/python3.13/site-packages/lattice/resources:ro
+      - ../src/lattice/recall/index.py:/usr/local/lib/python3.13/site-packages/lattice/recall/index.py:ro
+      - ../src/lattice/recall/vectors.py:/usr/local/lib/python3.13/site-packages/lattice/recall/vectors.py:ro
+      - ../src/lattice/recall/passages.py:/usr/local/lib/python3.13/site-packages/lattice/recall/passages.py:ro
+      - ../src/lattice/recall/entities.py:/usr/local/lib/python3.13/site-packages/lattice/recall/entities.py:ro
+      - ../src/lattice/extensions/pipeline.py:/usr/local/lib/python3.13/site-packages/lattice/extensions/pipeline.py:ro
+      - ../src/lattice/extensions/pipeline_latest.py:/usr/local/lib/python3.13/site-packages/lattice/extensions/pipeline_latest.py:ro
+      - ../src/lattice/core/store.py:/usr/local/lib/python3.13/site-packages/lattice/core/store.py:ro
     entrypoint: ["python", "-m", "lattice.launch"]
     command: ["--config", "/config/config.toml", "http", "--live", "--host", "0.0.0.0", "--port", "8011"]
     healthcheck:
@@ -19,6 +27,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks: [lattice]
   gateway:
     build:
@@ -42,11 +55,17 @@ services:
     volumes:
       - ./secrets:/secrets:ro
       - ./runtime/writer-debug:/writer-debug
+      - ./web/server:/app/server:ro
     networks: [lattice]
     healthcheck:
       test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:8080/ready'); if (!r.ok) process.exit(1)"]
       interval: 10s
       timeout: 5s
       retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 networks:
   lattice:

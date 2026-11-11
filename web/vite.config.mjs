@@ -16,6 +16,7 @@ import {
 import { narrativeBodyDiff, runNarrativeCodexTask } from "./server/narrativeCodexRunner.mjs";
 import { buildNarrativePreviewFingerprint } from "./server/narrativeMaterialPreview.mjs";
 import { createNarrativePreviewJobs } from "./server/narrativePreviewJobs.mjs";
+import { narrativePreviewFailure } from "./server/narrativeErrors.mjs";
 
 const narrativeWriterRoleDir = fileURLToPath(new URL("./codex_agents/narrative_writer/", import.meta.url));
 
@@ -146,7 +147,7 @@ function parseMcpEvent(text) {
   return JSON.parse(data);
 }
 
-import { latticeConfigured, callLatticeBackend, callLatticeTool } from './server/latticeBackend.mjs';
+import { latticeConfigured, latticeBackendTimedOut, callLatticeBackend, callLatticeTool } from './server/latticeBackend.mjs';
 
 async function callLatticeDashboard(path, options = {}) { return callLatticeBackend(path, options); }
 
@@ -472,11 +473,11 @@ function latticeGatewayBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             error: "gateway_observation_failed",
-            message: error?.name === "AbortError" ? "最近注入读取超时。" : "本地桥没有读到最近注入。",
+            message: latticeBackendTimedOut(error) ? "最近注入读取超时。" : "本地桥没有读到最近注入。",
             items: [],
           }));
         }
@@ -548,10 +549,10 @@ function latticeGatewayBridge() {
           response.statusCode = upstream.status;
           response.end(await upstream.text());
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "gateway_bridge_failed",
-            message: error?.name === "AbortError" ? "Gateway 响应超时。" : "本地桥没有完成这次模拟。",
+            message: latticeBackendTimedOut(error) ? "Gateway 响应超时。" : "本地桥没有完成这次模拟。",
           }));
         }
       });
@@ -630,10 +631,10 @@ function latticeGatewayBridge() {
           response.statusCode = upstream.status;
           response.end(await upstream.text());
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "semantic_route_bridge_failed",
-            message: error?.name === "AbortError" ? "Router 数据集操作超时。" : "本地桥没有完成 Router 数据集操作。",
+            message: latticeBackendTimedOut(error) ? "Router 数据集操作超时。" : "本地桥没有完成 Router 数据集操作。",
           }));
         }
       });
@@ -678,10 +679,10 @@ function latticeGatewayBridge() {
           response.statusCode = upstream.status;
           response.end(await upstream.text());
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "domain_policy_bridge_failed",
-            message: error?.name === "AbortError" ? "主域策略操作超时。" : "本地桥没有完成主域策略操作。",
+            message: latticeBackendTimedOut(error) ? "主域策略操作超时。" : "本地桥没有完成主域策略操作。",
           }));
         }
       });
@@ -800,7 +801,7 @@ function latticeMemoryBridge() {
         response.setHeader("Content-Type","application/json; charset=utf-8");
         response.setHeader("Cache-Control","no-store");
         const action=request.url?.split("?")[0];
-        if(!(request.method==="GET" && (action==="/status" || /^\/attempts\/\d+$/.test(action))) && !(request.method==="POST" && ["/next","/submit","/rebuild","/retry-image","/retry-batch","/restore-auto-boundary"].includes(action))) {
+        if(!(request.method==="GET" && (action==="/status" || /^\/(?:attempts|pending)\/\d+$/.test(action))) && !(request.method==="POST" && ["/next","/submit","/rebuild","/retry-image","/retry-batch","/restore-auto-boundary","/recovery-preview","/skip-batch","/rebatch","/resume-pending"].includes(action))) {
           response.statusCode=405;response.end(JSON.stringify({error:"method_not_allowed"}));return;
         }
         if(request.method==="POST" && (!String(request.headers["content-type"]).startsWith("application/json") ||
@@ -878,7 +879,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(await readLiveMemoryProjection(body.sourceIds)));
         } catch (error) {
           console.error("[lattice-memory-bridge] live Scene projection failed", error);
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             error: "memory_live_projection_failed",
@@ -915,10 +916,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "fact_events_read_failed",
-            message: error?.name === "AbortError" ? "读取事实和事件超时。" : "暂时没有读到事实和事件。",
+            message: latticeBackendTimedOut(error) ? "读取事实和事件超时。" : "暂时没有读到事实和事件。",
             items: [],
           }));
         }
@@ -949,7 +950,7 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.ok ? 200 : upstream.status;
           response.end(JSON.stringify({ ok: upstream.ok, item: (upstream.payload?.items || [])[0] || null }));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({ ok: false, message: "没有读到这条记忆的原文。" }));
         }
       });
@@ -986,10 +987,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "fact_event_revision_failed",
-            message: error?.name === "AbortError" ? "保存修订超时。" : "没有完成这次修订。",
+            message: latticeBackendTimedOut(error) ? "保存修订超时。" : "没有完成这次修订。",
           }));
         }
       });
@@ -1012,10 +1013,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "fact_event_rewrite_failed",
-            message: error?.name === "AbortError" ? "重写超时：模型 5 分钟没有返回，未落库。" : "没有完成这次重写。",
+            message: latticeBackendTimedOut(error) ? "重写超时：模型 5 分钟没有返回，未落库。" : "没有完成这次重写。",
           }));
         }
       });
@@ -1052,7 +1053,7 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             ok: false,
             error: "source_candidates_failed",
@@ -1135,7 +1136,7 @@ function latticeMemoryBridge() {
             source_count: Number(target.source_count || (target.source_refs || []).length),
           }, candidates: candidates.slice(0, 15) }));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({ ok: false, message: "读取相邻事件失败。" }));
         }
       });
@@ -1272,7 +1273,7 @@ function latticeMemoryBridge() {
             source_count: finalRefs.length,
           }));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({ ok: false, message: "没有完成这次合并。" }));
         }
       });
@@ -1296,10 +1297,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "fact_event_status_failed",
-            message: error?.name === "AbortError" ? "更新状态超时。" : "没有完成这次状态修改。",
+            message: latticeBackendTimedOut(error) ? "更新状态超时。" : "没有完成这次状态修改。",
           }));
         }
       });
@@ -1320,10 +1321,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "fact_event_deletion_failed",
-            message: error?.name === "AbortError" ? "永久删除超时。" : "没有完成永久删除。",
+            message: latticeBackendTimedOut(error) ? "永久删除超时。" : "没有完成永久删除。",
           }));
         }
       });
@@ -1349,7 +1350,7 @@ function latticeMemoryBridge() {
             response.statusCode = upstream.status;
             response.end(JSON.stringify(upstream.payload));
           } catch (error) {
-            response.statusCode = error?.name === "AbortError" ? 504 : 502;
+            response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
             response.end(JSON.stringify({
               error: request.method === "POST" ? "diary_comment_save_failed" : "diary_comment_delete_failed",
               message: request.method === "POST"
@@ -1373,7 +1374,7 @@ function latticeMemoryBridge() {
             response.statusCode = upstream.status;
             response.end(JSON.stringify(upstream.payload));
           } catch (error) {
-            response.statusCode = error?.name === "AbortError" ? 504 : 502;
+            response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
             response.end(JSON.stringify({
               error: "diary_save_failed",
               message: "这篇日记没有保存，请稍后再试。",
@@ -1388,7 +1389,7 @@ function latticeMemoryBridge() {
             response.statusCode = upstream.status;
             response.end(JSON.stringify(upstream.payload));
           } catch (error) {
-            response.statusCode = error?.name === "AbortError" ? 504 : 502;
+            response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
             response.end(JSON.stringify({
               error: "diary_delete_failed",
               message: "这篇日记没有删掉，请稍后再试。",
@@ -1406,7 +1407,7 @@ function latticeMemoryBridge() {
           response.statusCode = 200;
           response.end(JSON.stringify(await readLiveDiaries()));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             error: "diary_live_projection_failed",
@@ -1418,6 +1419,7 @@ function latticeMemoryBridge() {
 
       server.middlewares.use("/__lattice/live/narratives", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
         if (request.method !== "POST") {
           response.statusCode = 405;
           response.end(JSON.stringify({ error: "method_not_allowed" }));
@@ -1427,17 +1429,17 @@ function latticeMemoryBridge() {
           response.statusCode = 200;
           response.end(JSON.stringify(await readLiveNarratives()));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             error: "narrative_live_projection_failed",
-            message: "没有读到线上叙事卷，已保留本地样卷回退。",
+            message: "暂时无法读取书架，请重新读取；当前已显示的书目保留。",
             items: [],
           }));
         }
       });
 
-      for (const action of ["discover-theme", "create-line"]) {
+      for (const action of ["discover-theme", "create-line", "rename", "delete"]) {
         server.middlewares.use(`/__lattice/narrative-${action}`, async (request, response) => {
           response.setHeader("Content-Type", "application/json; charset=utf-8");
           if (request.method !== "POST") {
@@ -1563,13 +1565,9 @@ function latticeMemoryBridge() {
             : { status: "error", reason: "preview_busy", message: "已有预览正在生成，请稍后再试。" }));
         } catch (error) {
           console.error("[lattice-memory-bridge] Narrative preview failed", error);
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
-          response.end(JSON.stringify({
-            status: "error",
-            reason: "narrative_preview_failed",
-            message: error?.name === "AbortError" ? "这次预览生成超时了。" : "暂时没有生成叙事卷预览。",
-            writes_performed: [],
-          }));
+          const failure = narrativePreviewFailure(error);
+          response.statusCode = failure.statusCode;
+          response.end(JSON.stringify(failure.payload));
         }
       });
 
@@ -1642,11 +1640,11 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           console.error("[lattice-memory-bridge] Narrative body save failed", error);
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             reason: "narrative_body_save_failed",
-            message: error?.name === "AbortError" ? "保存正文超时了。" : "这次正文没有保存。",
+            message: latticeBackendTimedOut(error) ? "保存正文超时了。" : "这次正文没有保存。",
           }));
         }
       });
@@ -1662,7 +1660,7 @@ function latticeMemoryBridge() {
           response.statusCode = 200;
           response.end(JSON.stringify(await readLiveWindowShadows()));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             status: "error",
             error: "window_shadow_live_projection_failed",
@@ -1686,10 +1684,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "dream_bridge_failed",
-            message: error?.name === "AbortError" ? "读取梦境超时。" : "没有读到梦境。",
+            message: latticeBackendTimedOut(error) ? "读取梦境超时。" : "没有读到梦境。",
           }));
         }
       });
@@ -1713,10 +1711,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "dream_bridge_failed",
-            message: error?.name === "AbortError" ? "读取这场梦超时。" : "这场梦暂时翻不开。",
+            message: latticeBackendTimedOut(error) ? "读取这场梦超时。" : "这场梦暂时翻不开。",
           }));
         }
       });
@@ -1740,10 +1738,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "invalid" ? 404 : result?.status === "error" ? 502 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "scene_evidence_read_failed",
-            message: error?.name === "AbortError" ? "读取原文证据超时。" : "暂时没有读到这张 Scene 的原文证据。",
+            message: latticeBackendTimedOut(error) ? "读取原文证据超时。" : "暂时没有读到这张 Scene 的原文证据。",
           }));
         }
       });
@@ -1805,7 +1803,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(result));
         } catch (error) {
           const invalid = String(error?.message || "").startsWith("evidence_");
-          response.statusCode = invalid ? 400 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = invalid ? 400 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: invalid ? error.message : "scene_evidence_bind_failed",
             message: invalid ? "选择的原文已变化，请刷新后重选。" : "没有完成这次原文绑定。",
@@ -1839,7 +1837,7 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "invalid" ? 400 : result?.status === "error" ? 502 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "scene_evidence_unbind_failed",
             message: "没有完成这次原文解绑。",
@@ -1866,10 +1864,10 @@ function latticeMemoryBridge() {
           response.statusCode = scene?.status === "not_found" ? 404 : 200;
           response.end(JSON.stringify(scene));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "memory_bridge_failed",
-            message: error?.name === "AbortError" ? "读取 Scene 超时。" : "没有读到这张 Scene 的维护信息。",
+            message: latticeBackendTimedOut(error) ? "读取 Scene 超时。" : "没有读到这张 Scene 的维护信息。",
           }));
         }
       });
@@ -1903,10 +1901,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "memory_domain_write_failed",
-            message: error?.name === "AbortError" ? "修改主域超时。" : "没有把主域写回线上 Lattice。",
+            message: latticeBackendTimedOut(error) ? "修改主域超时。" : "没有把主域写回线上 Lattice。",
           }));
         }
       });
@@ -1943,10 +1941,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "conflict" ? 409 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "memory_bridge_failed",
-            message: error?.name === "AbortError" ? "保存 Scene 超时。" : "没有完成这次 Scene 修订。",
+            message: latticeBackendTimedOut(error) ? "保存 Scene 超时。" : "没有完成这次 Scene 修订。",
           }));
         }
       });
@@ -1980,10 +1978,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "conflict" ? 409 : result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "scene_revision_failed",
-            message: error?.name === "AbortError" ? "保存 Scene 超时。" : "没有完成这次 Scene 修订。",
+            message: latticeBackendTimedOut(error) ? "保存 Scene 超时。" : "没有完成这次 Scene 修订。",
           }));
         }
       });
@@ -2020,10 +2018,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "conflict" ? 409 : result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "scene_status_failed",
-            message: error?.name === "AbortError" ? "更新 Scene 状态超时。" : "没有完成这次 Scene 状态修改。",
+            message: latticeBackendTimedOut(error) ? "更新 Scene 状态超时。" : "没有完成这次 Scene 状态修改。",
           }));
         }
       });
@@ -2053,10 +2051,10 @@ function latticeMemoryBridge() {
           response.statusCode = upstream.status;
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "scene_delete_failed",
-            message: error?.name === "AbortError" ? "删除 Scene 超时。" : "没有完成这次删除。",
+            message: latticeBackendTimedOut(error) ? "删除 Scene 超时。" : "没有完成这次删除。",
           }));
         }
       });
@@ -2100,10 +2098,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "revision_bridge_failed",
-            message: error?.name === "AbortError" ? "读取修订箱超时。" : "没有读到修订箱。",
+            message: latticeBackendTimedOut(error) ? "读取修订箱超时。" : "没有读到修订箱。",
           }));
         }
       });
@@ -2133,10 +2131,10 @@ function latticeMemoryBridge() {
           response.statusCode = result?.status === "not_found" ? 404 : result?.status === "conflict" ? 409 : result?.status === "invalid" ? 400 : 200;
           response.end(JSON.stringify(result));
         } catch (error) {
-          response.statusCode = error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: "revision_bridge_failed",
-            message: error?.name === "AbortError" ? "保存修订草稿超时。" : "没有完成这次修订箱操作。",
+            message: latticeBackendTimedOut(error) ? "保存修订草稿超时。" : "没有完成这次修订箱操作。",
           }));
         }
       });
@@ -2174,7 +2172,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "relationship_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有读到关系提案。",
@@ -2231,7 +2229,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "relationship_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有完成这次关系审核。",
@@ -2274,7 +2272,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "scene_edge_create_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有创建这条关系提案。",
@@ -2298,7 +2296,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "scene_edge_history_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有读到关系边历史。",
@@ -2335,7 +2333,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "scene_edge_delete_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有完成这次关系边移除。",
@@ -2367,7 +2365,7 @@ function latticeMemoryBridge() {
           response.end(JSON.stringify(upstream.payload));
         } catch (error) {
           const unconfigured = error?.message === "dashboard_bridge_not_configured";
-          response.statusCode = unconfigured ? 503 : error?.name === "AbortError" ? 504 : 502;
+          response.statusCode = unconfigured ? 503 : latticeBackendTimedOut(error) ? 504 : 502;
           response.end(JSON.stringify({
             error: unconfigured ? "dashboard_bridge_not_configured" : "scene_edge_restore_bridge_failed",
             message: unconfigured ? "本地预览没有安全载入 Dashboard 凭据。" : "没有恢复这条关系边。",

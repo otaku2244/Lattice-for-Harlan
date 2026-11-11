@@ -143,6 +143,64 @@ class Narratives(NarrativeRollStore):
         return {'status': 'updated', 'narrative_id': narrative_id, 'revision': entry['revision'],
                 'added': added, 'model': str(model or ''), 'body_unchanged': True}
 
+    def rename(self, narrative_id, expected_revision, title):
+        """Rename a narrative book, keeping any subtitle after the book name."""
+        current = self.read(narrative_id)
+        if current.get('status') != 'ok':
+            return {'status': 'not_found', 'reason': 'narrative_not_found'}
+        if current['revision'] != expected_revision:
+            return {'status': 'conflict', 'reason': 'narrative_revision_changed',
+                    'current_revision': current['revision']}
+        # Existing books may store a subtitle after the book name.
+        parts = current['title'].split(' / ', 1)
+        full_title = title + (' / ' + parts[1] if len(parts) == 2 else '')
+        if full_title == current['title']:
+            return {**current, 'status': 'unchanged'}
+        entry = deepcopy(self.store.read(narrative_id)['metadata']['legacy_registry'])
+        previous = deepcopy(entry)
+        previous.pop('history', None)
+        entry.update(title=full_title, revision=current['revision'] + 1,
+                     history=[*entry.get('history', []), previous])
+        entry['source_file'] = f"sqlite:{narrative_id}/revision-{entry['revision']:04d}"
+        document = current['full_document']
+        if document.startswith('# '):
+            _, newline, rest = document.partition('\n')
+            document = '# ' + full_title + newline + rest
+        else:
+            document = '# ' + full_title + '\n\n' + document
+        entry['document_sha256'] = digest(document)
+        self._persist(entry, document)
+        return {**self.read(narrative_id), 'status': 'updated'}
+
+    def delete(self, narrative_id, expected_revision):
+        """Tombstone a narrative book and dismiss its pending revision hints."""
+        current = self.store.read(narrative_id)
+        if not current or current['kind'] != 'narrative':
+            return {'status': 'not_found', 'reason': 'narrative_not_found'}
+        if current['lifecycle'] == 'deleted':
+            return {'status': 'deleted', 'narrative_id': narrative_id}
+        if current['revision'] != expected_revision:
+            return {'status': 'conflict', 'reason': 'narrative_revision_changed',
+                    'current_revision': current['revision']}
+        arc = current['metadata'].get('legacy_registry', {}).get('arc_key')
+        if arc:
+            # fact_event_arc_links is created lazily by Events(); skip it when absent.
+            present = {row[0] for row in self.store.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            for table in ('fact_event_arc_links', 'event_arc_links'):
+                if table in present:
+                    self.store.conn.execute(f'DELETE FROM {table} WHERE arc_key=?', (arc,))
+        inbox = RevisionInbox(self.store)
+        raw = inbox._load()
+        for hint in raw['items']:
+            if (hint.get('narrative_id') == narrative_id
+                    or hint.get('resolved_narrative_id') == narrative_id):
+                hint.update(status='dismissed', resolution='narrative_deleted', updated_at=now())
+        inbox._save(raw)
+        self.store.set_lifecycle(narrative_id, 'deleted')
+        self.store.conn.execute('INSERT INTO index_outbox(document_id) VALUES (?)', (narrative_id,))
+        return {'status': 'deleted', 'narrative_id': narrative_id}
+
 
 class RevisionInbox(NarrativeRevisionInbox):
     def __init__(self, store):

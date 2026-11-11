@@ -18,6 +18,16 @@ MAX_IMAGE_REDIRECTS = 3
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 20
 
 
+def agent_text_task(task):
+    """Image bytes travel as image blocks; never alter original prompt text."""
+    request=task.get('request')
+    if not isinstance(request,dict) or not request.get('images'):
+        return task
+    return {**task,'request':{**request,'images':[
+        {key:value for key,value in image.items() if key not in {'url','original_url'}}
+        for image in request['images']]}}
+
+
 class MissingOriginalImage(ValueError):
     """The attachment is gone, rather than a temporary download failure."""
 
@@ -252,8 +262,19 @@ def compact_batch_snapshot(data):
     keys=('contract','runtime_revision','scope','source','day','routing_messages','routing_result',
           'tracks','recent','next_track_ordinal','input_policy',
           'last_routing_repair','rebuild_of','recovery_downgrade',
-          'revision_downgrade','revision_downgrades')
+          'revision_downgrade','revision_downgrades','joint_review')
     compact={key:data[key] for key in keys if key in data}
+    # 待办补写要判两件事：这批原话切进了哪些组件、组件的归属单元是什么。
+    # 只丢正文，保留 id 与归属；否则 catalog 认不出待办属于哪个组件，
+    # 切分完成的材料就再也没机会写成 Event。
+    compact['messages']=[{'id':m['id']} for m in data.get('messages') or [] if 'id' in m]
+    compact['components']=[{
+        'track_ids':list(component.get('track_ids') or []),
+        'messages':[{'id':m['id']} for m in component.get('messages') or [] if 'id' in m],
+        'parked_context_source_ids':list(component.get('parked_context_source_ids') or []),
+        'memberships':[dict(unit) for unit in component.get('memberships') or []],
+        'context_edges':[dict(edge) for edge in component.get('context_edges') or []],
+    } for component in data.get('components') or []]
     compact['task_snapshot_compacted']=True
     return _strip_task_media(compact)
 

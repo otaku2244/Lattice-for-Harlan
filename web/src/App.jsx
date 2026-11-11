@@ -35,7 +35,7 @@ const readAreaFromHash = () => {
   if (window.location.hash === "#memos") return "备忘";
   if (window.location.hash === "#help") return "使用说明";
   if (window.location.hash === "#settings") return "设置";
-  if (window.location.hash === "#memory") return "记忆";
+  if (["#memory", "#preferences"].includes(window.location.hash)) return "记忆";
   if (window.location.hash === "#narrative") return "叙事卷";
   if (window.location.hash === "#diary") return "日记";
   if (window.location.hash === "#basement") return "地下室";
@@ -164,7 +164,7 @@ export function App() {
 
       {activeArea === "使用说明" && <section className="help-page" aria-label="使用说明">
         <div className="settings-panel settings-page">
-          <header className="settings-panel__header"><div><span>SEREIN</span><h2>使用说明</h2></div></header>
+          <header className="settings-panel__header"><div><span>LATTICE</span><h2>使用说明</h2></div></header>
           <div className="settings-panel__body"><UsageGuide initialPage={helpPage} onOpenSettingsTab={(tab) => {
             window.dispatchEvent(new CustomEvent("lattice:open-settings-tab", { detail: tab }));
             navigateTo("设置");

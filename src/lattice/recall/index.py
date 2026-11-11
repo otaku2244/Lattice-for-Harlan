@@ -86,7 +86,7 @@ def build_index(database, index, *, event_cache=None):
             # All reads in this build refer to the same canonical snapshot.
             reader.store.conn.execute("BEGIN")
             with conn:
-                for row in reader.store.conn.execute("SELECT id FROM documents WHERE lifecycle!='deleted' ORDER BY id"):
+                for row in reader.store.conn.execute("SELECT id FROM documents WHERE lifecycle='active' ORDER BY id"):
                     doc = reader.store.read(row["id"])
                     conn.execute("INSERT INTO documents VALUES (?,?,?)", (doc["id"], doc["kind"], content_stamp(doc)))
                     conn.execute("INSERT INTO terms VALUES (?,?,?)",
@@ -132,7 +132,7 @@ def refresh_index(database, index, document_ids):
             for document_id in set(document_ids):
                 doc = reader.store.read(document_id)
                 old = conn.execute("SELECT stamp FROM documents WHERE id=?", (document_id,)).fetchone()
-                if doc and doc["lifecycle"] != "deleted" and old and old[0] == content_stamp(doc):
+                if doc and doc["lifecycle"] == "active" and old and old[0] == content_stamp(doc):
                     continue
                 conn.execute("DELETE FROM terms WHERE id=?", (document_id,))
                 conn.execute("DELETE FROM vectors WHERE id=?", (document_id,))
@@ -140,7 +140,7 @@ def refresh_index(database, index, document_ids):
                     if table in optional:
                         conn.execute(f'DELETE FROM {table} WHERE document_id=?',(document_id,))
                 conn.execute("DELETE FROM documents WHERE id=?", (document_id,))
-                if doc and doc["lifecycle"] != "deleted":
+                if doc and doc["lifecycle"] == "active":
                     conn.execute("INSERT INTO documents VALUES (?,?,?)", (doc["id"], doc["kind"], content_stamp(doc)))
                     conn.execute("INSERT INTO terms VALUES (?,?,?)",
                                  (doc["id"], " ".join(tokens(doc["title"])), " ".join(tokens(doc["body_md"]))))

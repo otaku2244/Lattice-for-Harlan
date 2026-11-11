@@ -36,6 +36,10 @@ class Store:
                      if read_only else sqlite3.connect(self.path, isolation_level=None))
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys=ON")
+        # Background jobs contend for the write lock (scheduled_advance runs every
+        # few seconds); the sqlite3 default of 5s surfaced as spurious
+        # "database is locked" failures. Wait instead of failing the stage.
+        self.conn.execute("PRAGMA busy_timeout=15000")
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if read_only:
             if version not in (5, 6, 7, 8, 9) or self.conn.execute("PRAGMA application_id").fetchone()[0] != 0x53524E31:

@@ -58,10 +58,10 @@ def rebuild_entities(settings, *, legacy_rows=(), document_ids=None):
                 conn.execute('DELETE FROM entity_observations')
             else:
                 conn.executemany('DELETE FROM entity_observations WHERE document_id=?',[(key,) for key in document_ids])
-            selected=(search.reader.store.conn.execute("SELECT id FROM documents WHERE kind IN ('event','scene') AND lifecycle!='deleted' ORDER BY id")
+            selected=(search.reader.store.conn.execute("SELECT id FROM documents WHERE kind IN ('event','scene') AND lifecycle='active' ORDER BY id")
                 if document_ids is None else
                 (row for identifier in sorted(document_ids) for row in search.reader.store.conn.execute(
-                    "SELECT id FROM documents WHERE id=? AND kind IN ('event','scene') AND lifecycle!='deleted'",(identifier,))))
+                    "SELECT id FROM documents WHERE id=? AND kind IN ('event','scene') AND lifecycle='active'",(identifier,))))
             for row in selected:
                 obj=search.reader.read(row['id'],with_evidence=True)
                 if not obj['readable']: continue

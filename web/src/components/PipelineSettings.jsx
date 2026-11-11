@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {ConversationImport} from './ConversationImport.jsx';
+import {PendingMaterials} from './PendingMaterials.jsx';
 import {instanceSettings} from '../storage/instanceStore.js';
 
 export function PipelineSettings({onOpenSummary}) {
@@ -28,7 +29,7 @@ export function PipelineSettings({onOpenSummary}) {
     :work?.execution_mode==='agent'?'自动整理已开启，当前为 Agent 模式；点击“继续整理”可创建任务，等待 Agent 领取。'
     :work?.stage==='settled_today'?'今天的自动检查已完成；新原话会在下一轮检查。'
     :'自动整理已开启；后台在每天 03:00 后检查新原话。要立即运行可点击“继续整理”。';
-  const stages={paused:'本批已暂停',idle:'尚未开始',queued:'等待后台处理',starting:'正在准备',track_router:'归线',event_curator:'切分整理',event_writer:'Event 写作',awaiting_agent:'等待 Agent',processed:'已保存',current:'整理完成',needs_repair:'归线材料待修复',rebuilt:'计划已重建',blocked:'部分聊天等待处理',retry_wait:'等待有限重试'};
+  const stages={paused:'本批已暂停',idle:'尚未开始',queued:'等待后台处理',starting:'正在准备',track_router:'归线',event_curator:'切分整理',event_writer:'Event 写作',awaiting_agent:'等待 Agent',processed:'本批处理完成',current:'本轮检查完成',retained:'已移入待处理材料',needs_repair:'归线材料待修复',rebuilt:'计划已重建',blocked:'部分聊天等待处理',retry_wait:'等待有限重试'};
   async function call(action,body) {
     const response=await fetch('/__lattice/pipeline/'+action,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await response.json();
@@ -172,5 +173,6 @@ export function PipelineSettings({onOpenSummary}) {
       <p>将 {work?.auto_boundary_originals||0} 条原话重新放入待整理池，并启动一次后台整理。后续模型调用可能产生费用；已结算和主动跳过的原话不会重跑。</p>
       <div className="settings-actions"><button type="button" onClick={()=>restoreDialog.current.close()}>取消</button><button type="button" disabled={busy||running} onClick={restoreBoundary}>确认恢复并整理</button></div>
     </dialog>
+    <PendingMaterials work={work} onChange={accept}/>
     <p role="status">{status}</p></section>;
 }
