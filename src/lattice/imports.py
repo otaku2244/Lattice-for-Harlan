@@ -35,19 +35,44 @@ def text_content(value):
 
 
 def markdown_messages(text,names):
-    labels={name.lower():'user' for name in ('user','human','me','用户','人类','我',names['user_name'])}
-    labels.update({name.lower():'assistant' for name in ('assistant','ai','claude','chatgpt','gpt','deepseek','助手',names['ai_name'])})
+    labels={name.lower():'user' for name in ('user','human','me','用户','人类','我',names['user_name']) if name}
+    labels.update({name.lower():'assistant' for name in ('assistant','ai','claude','chatgpt','gpt','deepseek','助手',names['ai_name']) if name})
     pattern=re.compile(r'^\s*(?:>\s*)?(?:[-*+]\s*)?(?:#{1,6}\s*)?(?:\*\*)?([^:：\n]+?)(?:\*\*)?\s*[:：]\s*(.*)$')
+    # 独立成行的角色标记，如「[👤 用户]」「【🤖 助手】」「[助手]」；标签后不带正文，
+    # 正文在后续行。部分导出工具用这种写法，此前会被当成一条整文。
+    marker=re.compile(r'^\s*[\[【]\s*(?:[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]\s*)?([^\]】\n]{1,16}?)\s*[\]】]\s*$')
+    model_line=re.compile(r'^\s*[（(]\s*模型\s*[:：][^)）]*[)）]\s*$')
+    separator=re.compile(r'^\s*[-=_—–~*]{5,}\s*$')
+    lines=text.splitlines()
+    # 有的导出文件在第一条消息前带一段文件头（导出时间、对话数量等）。找到第一个
+    # 独立角色标记，从那里开始解析，避免文件头被当成一条用户发言。
+    for index,line in enumerate(lines):
+        hit=marker.match(line)
+        if hit and hit.group(1).strip().strip('*').lower() in labels:
+            lines=lines[index:]
+            break
     result=[];role='user';parts=[];fenced=False
     def flush():
         content='\n'.join(parts)
         if content.strip():result.append({'role':role,'content':content})
-    for line in text.splitlines():
+    for line in lines:
         if line.lstrip().startswith(('```','~~~')):fenced=not fenced
+        if not fenced:
+            hit=marker.match(line)
+            if hit:
+                key=hit.group(1).strip().strip('*').lower()
+                if key in labels:
+                    flush();role=labels[key];parts=[]
+                    continue
+            if separator.match(line):
+                continue
         match=pattern.match(line) if not fenced else None
         label=match.group(1).strip().strip('*').lower() if match else ''
-        if label in labels:
+        if label and label in labels:
             flush();role=labels[label];parts=[match.group(2).removeprefix('**').lstrip()]
+        elif model_line.match(line) and role=='assistant' and not '\n'.join(parts).strip():
+            # 「（模型: xxx）」只是导出工具附注，保留会影响原文可读性。
+            continue
         else:parts.append(line)
     flush()
     return result
