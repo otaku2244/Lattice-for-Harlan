@@ -180,6 +180,8 @@ def create_app(settings, *, token: str, live: bool=False):
         app.include_router(narrative_routes(settings, auth))
         from .history import routes as history_routes
         app.include_router(history_routes(settings, auth))
+        from .maintenance import routes as maintenance_routes
+        app.include_router(maintenance_routes(settings, auth))
         from .relations import routes as relation_routes
         app.include_router(relation_routes(settings, auth))
         from ..compat.publication import publication_configured

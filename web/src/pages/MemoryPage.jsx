@@ -907,6 +907,7 @@ function SceneDomainEditor({ scene, onSaved }) {
 
 export function MemoryPage() {
   const [exporting,setExporting]=useState(false);
+  const [purging,setPurging]=useState(false);
   async function exportMemories() {
     setExporting(true);
     try {
@@ -917,6 +918,24 @@ export function MemoryPage() {
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch {setSceneActionState("error");setSceneActionMessage("导出失败，请稍后重试。");}
     finally{setExporting(false);}
+  }
+  async function purgeHistory(){
+    if(purging)return;
+    setPurging(true);
+    try{
+      const stats=await (await fetch("/__lattice/maintenance/history")).json();
+      if(!stats||stats.ok===false)throw new Error(stats&&stats.message?stats.message:"读取失败");
+      if(!stats.events&&!stats.documents){setSceneActionState("success");setSceneActionMessage("没有需要清理的历史版本。");return;}
+      const warn=`将永久删除 ${stats.events} 条历史事件版本、${stats.documents} 篇文档（含证据、改写历史与召回索引），无法恢复。当前库 ${stats.size_mb} MB。继续？`;
+      if(!window.confirm(warn))return;
+      const response=await fetch("/__lattice/maintenance/history/purge",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||result.ok===false)throw new Error(result&&result.message?result.message:"清理失败");
+      setSceneActionState("success");
+      setSceneActionMessage(`已清理 ${result.events} 条历史事件、${result.documents} 篇文档，删除 ${result.rows} 行，释放 ${result.freed_mb} MB。`);
+      setTimeout(()=>window.location.reload(),1500);
+    }catch(error){setSceneActionState("error");setSceneActionMessage(error.message||"清理失败，请稍后重试。");}
+    finally{setPurging(false);}
   }
   async function removeRelatedScene(record) {
     setSceneActionState("saving");
@@ -1685,6 +1704,7 @@ export function MemoryPage() {
                   : "事实保持短小、独立，并带着它来自哪一刻。"}</p>
             </div>
             <div className="memory-stream__header-actions">
+              <button type="button" disabled={purging} onClick={purgeHistory}>{purging?"清理中…":"清理历史版本"}</button>
               <button type="button" disabled={exporting} onClick={exportMemories}>{exporting?"导出中…":"导出 Markdown"}</button>
               <span aria-live="polite">{memoryType === "scene" ? filteredScenes.length : activeFactEvents.length} 个{memoryTypeLabels[memoryType]}</span>
               {memoryType !== "fact" && !selectionMode ? (

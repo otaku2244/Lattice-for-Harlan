@@ -698,6 +698,39 @@ function latticeMemoryBridge() {
       const narrativePreviewJobs = createNarrativePreviewJobs();
       appearanceBridge(server, callLatticeBackend, readJsonBody);
       eventMailboxBridge(server, callLatticeBackend, readJsonBody);
+      // Local fork: 清理历史版本（墓碑 / 被替换事件），口径与 /v1/maintenance/history 一致。
+      server.middlewares.use("/__lattice/maintenance/history", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        const sub = String(request.url || "/").split("?")[0].replace(/\/+$/, "");
+        try {
+          if (sub === "" || sub === "/") {
+            const upstream = await callLatticeDashboard("/v1/maintenance/history");
+            response.statusCode = upstream.status;
+            response.end(JSON.stringify(upstream.payload));
+            return;
+          }
+          if (sub === "/purge") {
+            if (request.method !== "POST") {
+              response.statusCode = 405;
+              response.end(JSON.stringify({ ok: false, message: "method_not_allowed" }));
+              return;
+            }
+            const upstream = await callLatticeDashboard("/v1/maintenance/history/purge?confirm=1", {
+              method: "POST",
+              body: {},
+            });
+            response.statusCode = upstream.status;
+            response.end(JSON.stringify(upstream.payload));
+            return;
+          }
+          response.statusCode = 404;
+          response.end(JSON.stringify({ ok: false, message: "not_found" }));
+        } catch (error) {
+          response.statusCode = latticeBackendTimedOut(error) ? 504 : 502;
+          response.end(JSON.stringify({ ok: false, message: "清理接口调用失败。" }));
+        }
+      });
       server.middlewares.use("/__lattice/export/markdown", async (request,response)=>{
         if(request.method!=="GET"){response.statusCode=405;response.end();return;}
         try {
