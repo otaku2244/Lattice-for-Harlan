@@ -1114,7 +1114,9 @@ function latticeMemoryBridge() {
               if (Number.isNaN(candidateStart) || Number.isNaN(candidateEnd)) continue;
               const gapMinutes = candidateStart >= targetEnd
                 ? Math.round((candidateStart - targetEnd) / 60_000)
-                : Math.round((targetStart - candidateEnd) / 60_000);
+                : candidateEnd <= targetStart
+                  ? -Math.round((targetStart - candidateEnd) / 60_000)
+                  : 0;
               candidates.push({
                 item_id: item.item_id,
                 title: item.title || "",
@@ -1127,7 +1129,11 @@ function latticeMemoryBridge() {
               });
             }
           }
-          candidates.sort((left, right) => Math.abs(left.gap_minutes) - Math.abs(right.gap_minutes));
+          // 同向聚拢：更早的在前一堆、更晚的在后一堆，堆内由近及远。
+          const sideOf = (row) => (row.gap_minutes < 0 ? 0 : 1);
+          candidates.sort((left, right) => sideOf(left) - sideOf(right)
+            || Math.abs(left.gap_minutes) - Math.abs(right.gap_minutes)
+            || `${left.local_date} ${left.local_start_time}`.localeCompare(`${right.local_date} ${right.local_start_time}`));
           response.statusCode = 200;
           response.end(JSON.stringify({ ok: true, base: {
             item_id: target.item_id,
